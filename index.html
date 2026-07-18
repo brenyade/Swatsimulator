@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWAT SIMULATOR — Metro City Tactical Operations</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===================== MAIN MENU ===================== -->
+    <section id="screen-menu" class="screen active">
+      <div class="menu-bg"></div>
+      <div class="menu-content">
+        <h1 class="game-title">SWAT<span>SIMULATOR</span></h1>
+        <p class="game-subtitle">METRO CITY TACTICAL OPERATIONS DIVISION</p>
+        <nav class="menu-buttons">
+          <button id="btn-play-now" class="btn btn-primary btn-large">▶ PLAY NOW</button>
+          <button id="btn-career" class="btn btn-large">CAREER MODE</button>
+          <button id="btn-armory" class="btn btn-large">ARMORY &amp; LOADOUT</button>
+          <button id="btn-options" class="btn btn-large">OPTIONS</button>
+          <button id="btn-credits" class="btn btn-large">CREDITS</button>
+        </nav>
+        <div class="menu-footer">v1.0 — Single Player Career Build</div>
+      </div>
+    </section>
+
+    <!-- ===================== CAREER / MISSION SELECT ===================== -->
+    <section id="screen-career" class="screen">
+      <div class="panel-header">
+        <h2>CAREER MODE — Officer Dossier</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div class="career-body">
+        <div class="career-profile" id="career-profile"></div>
+        <div class="mission-list" id="mission-list"></div>
+      </div>
+    </section>
+
+    <!-- ===================== BRIEFING ===================== -->
+    <section id="screen-briefing" class="screen">
+      <div class="briefing-wrap">
+        <h2 id="briefing-title"></h2>
+        <div class="briefing-columns">
+          <div class="briefing-text" id="briefing-text"></div>
+          <div class="briefing-side">
+            <canvas id="briefing-map-preview" width="360" height="260"></canvas>
+            <div id="briefing-objectives" class="briefing-objectives"></div>
+            <div id="briefing-loadout" class="briefing-loadout"></div>
+          </div>
+        </div>
+        <div class="briefing-actions">
+          <button class="btn btn-back" data-back="career">← BACK</button>
+          <button id="btn-deploy" class="btn btn-primary btn-large">DEPLOY ▶</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ARMORY ===================== -->
+    <section id="screen-armory" class="screen">
+      <div class="panel-header">
+        <h2>ARMORY &amp; LOADOUT</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div id="armory-body" class="armory-body"></div>
+    </section>
+
+    <!-- ===================== OPTIONS ===================== -->
+    <section id="screen-options" class="screen">
+      <div class="panel-header">
+        <h2>OPTIONS</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div class="options-body">
+        <label class="opt-row"><span>Master Volume</span><input type="range" id="opt-volume" min="0" max="100" value="70"></label>
+        <label class="opt-row"><span>Show Command Bar Hints</span><input type="checkbox" id="opt-hints" checked></label>
+        <div class="opt-row">
+          <span>Reset Career Progress</span>
+          <button id="btn-reset-career" class="btn btn-danger">RESET SAVE</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== CREDITS ===================== -->
+    <section id="screen-credits" class="screen">
+      <div class="panel-header">
+        <h2>CREDITS</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div class="credits-body">
+        <p><strong>SWAT SIMULATOR</strong></p>
+        <p>A single-player tactical law-enforcement simulation.</p>
+        <p>Design, Engineering &amp; Direction — Metro City Studios</p>
+        <p>Built entirely with HTML5 Canvas &amp; JavaScript. No external engine or assets required.</p>
+        <p>Thank you for playing.</p>
+      </div>
+    </section>
+
+    <!-- ===================== IN-GAME (GAMEPLAY) ===================== -->
+    <section id="screen-game" class="screen">
+      <canvas id="game-canvas" width="1000" height="680"></canvas>
+
+      <div id="hud">
+        <div class="hud-top-left">
+          <div id="hud-objectives" class="hud-panel"></div>
+        </div>
+        <div class="hud-top-right">
+          <div id="hud-timer" class="hud-panel hud-timer">05:00</div>
+        </div>
+        <div class="hud-bottom-left">
+          <div class="hud-panel hud-vitals">
+            <div class="vital-row"><span class="vital-label">HEALTH</span><div class="bar"><div id="hud-health-bar" class="bar-fill health"></div></div></div>
+            <div class="vital-row"><span class="vital-label" id="hud-weapon-name">M9 PISTOL</span><span id="hud-ammo">15 / 45</span></div>
+          </div>
+        </div>
+        <div class="hud-bottom-right">
+          <div id="hud-team" class="hud-panel hud-team"></div>
+        </div>
+        <div id="hud-command-bar" class="hud-command-bar"></div>
+        <div id="hud-banner" class="hud-banner"></div>
+        <div id="hud-crosshair">+</div>
+      </div>
+
+      <div id="pause-menu" class="overlay hidden">
+        <div class="overlay-box">
+          <h2>MISSION PAUSED</h2>
+          <button id="btn-resume" class="btn btn-primary btn-large">RESUME</button>
+          <button id="btn-restart-mission" class="btn btn-large">RESTART MISSION</button>
+          <button id="btn-controls" class="btn btn-large">CONTROLS</button>
+          <button id="btn-quit-mission" class="btn btn-large">QUIT TO MENU</button>
+        </div>
+      </div>
+
+      <div id="controls-overlay" class="overlay hidden">
+        <div class="overlay-box controls-box">
+          <h2>FIELD MANUAL</h2>
+          <ul class="controls-list">
+            <li><b>WASD</b> — Move</li>
+            <li><b>Mouse</b> — Aim</li>
+            <li><b>Left Click</b> — Fire weapon</li>
+            <li><b>R</b> — Reload</li>
+            <li><b>Q</b> — Switch lethal / less-lethal</li>
+            <li><b>F</b> — Throw flashbang (or breach nearest door)</li>
+            <li><b>E</b> — Interact (cuff suspect / free hostage / open door)</li>
+            <li><b>1</b> — Team: Follow me</li>
+            <li><b>2</b> — Team: Hold position</li>
+            <li><b>3 + Click</b> — Team: Move to marker</li>
+            <li><b>4</b> — Team: Breach nearest door &amp; clear</li>
+            <li><b>Space</b> — Order suspects to surrender ("Freeze! SWAT!")</li>
+            <li><b>Esc</b> — Pause</li>
+          </ul>
+          <button id="btn-close-controls" class="btn btn-primary">CLOSE</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DEBRIEF ===================== -->
+    <section id="screen-debrief" class="screen">
+      <div class="debrief-wrap">
+        <h2 id="debrief-title">MISSION COMPLETE</h2>
+        <div id="debrief-grade" class="debrief-grade">S</div>
+        <div id="debrief-stats" class="debrief-stats"></div>
+        <div id="debrief-story" class="debrief-story"></div>
+        <div class="briefing-actions">
+          <button id="btn-debrief-retry" class="btn btn-large">RETRY MISSION</button>
+          <button id="btn-debrief-menu" class="btn btn-large">MAIN MENU</button>
+          <button id="btn-debrief-next" class="btn btn-primary btn-large">CONTINUE ▶</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

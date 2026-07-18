@@ -1,0 +1,11 @@
+{
+  "name": "swat-simulator",
+  "version": "1.0.0",
+  "description": "SWAT Simulator - single player tactical career mode game",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "validate-maps": "node scripts/validateMaps.mjs"
+  }
+}
