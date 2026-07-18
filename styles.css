@@ -180,8 +180,18 @@ html, body {
 }
 .hud-banner.show { opacity: 1; }
 #hud-crosshair {
-  position: absolute; color: var(--accent-2); font-size: 1.2rem; font-weight: 700;
+  position: absolute; top: 50%; left: 50%; color: var(--accent-2); font-size: 1.2rem; font-weight: 700;
   transform: translate(-50%,-50%); pointer-events: none; text-shadow: 0 0 4px black;
+}
+#pointer-lock-hint {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); color: var(--text); font-size: 1.4rem; font-weight: 700;
+  letter-spacing: 0.05em; cursor: pointer; text-align: center; pointer-events: auto;
+}
+#pointer-lock-hint span { text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+
+#hud-flash-overlay {
+  position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
 }
 
 .overlay {

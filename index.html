@@ -74,6 +74,7 @@
       </div>
       <div class="options-body">
         <label class="opt-row"><span>Master Volume</span><input type="range" id="opt-volume" min="0" max="100" value="70"></label>
+        <label class="opt-row"><span>Mouse Sensitivity</span><input type="range" id="opt-sens" min="20" max="200" value="100"></label>
         <label class="opt-row"><span>Show Command Bar Hints</span><input type="checkbox" id="opt-hints" checked></label>
         <div class="opt-row">
           <span>Reset Career Progress</span>
@@ -120,7 +121,10 @@
         <div id="hud-command-bar" class="hud-command-bar"></div>
         <div id="hud-banner" class="hud-banner"></div>
         <div id="hud-crosshair">+</div>
+        <div id="hud-flash-overlay"></div>
       </div>
+
+      <div id="pointer-lock-hint"><span>CLICK TO ENABLE MOUSE LOOK</span></div>
 
       <div id="pause-menu" class="overlay hidden">
         <div class="overlay-box">
@@ -136,8 +140,9 @@
         <div class="overlay-box controls-box">
           <h2>FIELD MANUAL</h2>
           <ul class="controls-list">
-            <li><b>WASD</b> — Move</li>
-            <li><b>Mouse</b> — Aim</li>
+            <li><b>Click canvas</b> — Enable mouse look</li>
+            <li><b>Mouse</b> — Look / turn</li>
+            <li><b>WASD</b> — Move (relative to where you're facing)</li>
             <li><b>Left Click</b> — Fire weapon</li>
             <li><b>R</b> — Reload</li>
             <li><b>Q</b> — Switch lethal / less-lethal</li>
@@ -145,7 +150,7 @@
             <li><b>E</b> — Interact (cuff suspect / free hostage / open door)</li>
             <li><b>1</b> — Team: Follow me</li>
             <li><b>2</b> — Team: Hold position</li>
-            <li><b>3 + Click</b> — Team: Move to marker</li>
+            <li><b>3</b> — Team: Move to marker (ahead of you)</li>
             <li><b>4</b> — Team: Breach nearest door &amp; clear</li>
             <li><b>Space</b> — Order suspects to surrender ("Freeze! SWAT!")</li>
             <li><b>Esc</b> — Pause</li>

@@ -1,57 +1,47 @@
 import { Mission } from './Mission.js';
 import { Input } from './Input.js';
-import { render } from './Renderer.js';
+import { Renderer3D } from './Renderer3D.js';
 import { updateHUD, initCommandBar } from './HUD.js';
 import {
   commandFollow, commandHold, commandMoveTo, commandBreach, orderSurrender, contextInteract, findNearestDoor,
 } from '../core/CommandSystem.js';
 
 const MAX_DT = 1 / 20;
+const MOVE_ORDER_DISTANCE = 130; // px ahead of the player's facing direction
 
 export class GameRunner {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
     this.input = new Input(canvas);
+    this.renderer3d = new Renderer3D(canvas);
     this.mission = null;
     this.running = false;
     this.paused = false;
-    this.moveMarkerMode = false;
     this.marker = null;
     this.markerTimer = 0;
     this._onFrame = this._onFrame.bind(this);
 
-    canvas.addEventListener('click', (e) => this._onCanvasClick(e));
+    this.hint = document.getElementById('pointer-lock-hint');
+    this.hint.addEventListener('click', () => this.input.requestLock());
   }
 
   start(missionDef, callbacks) {
     this.mission = new Mission(missionDef);
+    this.renderer3d.buildScene(this.mission);
     this.callbacks = callbacks || {};
     this.running = true;
     this.paused = false;
-    this.moveMarkerMode = false;
     this.marker = null;
     this._lastT = performance.now();
     initCommandBar();
     requestAnimationFrame(this._onFrame);
   }
 
-  stop() { this.running = false; }
-  setPaused(v) { this.paused = v; }
+  stop() { this.running = false; this.input.exitLock(); }
 
-  _onCanvasClick(e) {
-    if (!this.running || this.paused || !this.mission) return;
-    if (this.moveMarkerMode) {
-      const rect = this.canvas.getBoundingClientRect();
-      const cx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
-      const cy = (e.clientY - rect.top) * (this.canvas.height / rect.height);
-      const world = { x: cx - this.mission.offsetX, y: cy - this.mission.offsetY };
-      commandMoveTo(this.mission, world);
-      this.marker = world;
-      this.markerTimer = 3;
-      this.moveMarkerMode = false;
-      this.input.suppressFire = false;
-    }
+  setPaused(v) {
+    this.paused = v;
+    if (v) this.input.exitLock();
   }
 
   _handleCommandKeys() {
@@ -60,9 +50,11 @@ export class GameRunner {
     if (input.wasPressed('1')) commandFollow(mission);
     if (input.wasPressed('2')) commandHold(mission);
     if (input.wasPressed('3')) {
-      this.moveMarkerMode = true;
-      input.suppressFire = true;
-      mission.banner('CLICK A LOCATION TO SEND YOUR TEAM');
+      const p = mission.player;
+      const target = { x: p.x + Math.cos(p.facing) * MOVE_ORDER_DISTANCE, y: p.y + Math.sin(p.facing) * MOVE_ORDER_DISTANCE };
+      commandMoveTo(mission, target);
+      this.marker = target;
+      this.markerTimer = 2.5;
     }
     if (input.wasPressed('4')) commandBreach(mission);
     if (input.wasPressed(' ')) orderSurrender(mission);
@@ -90,8 +82,9 @@ export class GameRunner {
     const dt = Math.min(MAX_DT, (t - this._lastT) / 1000);
     this._lastT = t;
 
+    this.hint.style.display = (!this.paused && !this.input.pointerLocked) ? 'flex' : 'none';
+
     if (!this.paused) {
-      this.input.updateMouseWorld(this.mission);
       this._handleCommandKeys();
       this.mission.update(dt, this.input);
 
@@ -100,13 +93,15 @@ export class GameRunner {
       if (this.mission.state !== 'running') {
         this.input.clearFrame();
         this.running = false;
+        this.input.exitLock();
         this.callbacks.onEnd?.(this.mission);
         return;
       }
     }
     this.input.clearFrame();
 
-    render(this.ctx, this.mission, { marker: this.marker });
+    this.renderer3d.update(this.mission, this.paused ? 0 : dt, this.marker);
+    this.renderer3d.render();
     updateHUD(this.mission, this.input);
     requestAnimationFrame(this._onFrame);
   }

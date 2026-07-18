@@ -4,6 +4,7 @@ import { GameRunner } from './engine/GameRunner.js';
 import { drawMapPreview } from './ui/mapPreview.js';
 import { WEAPONS, EQUIPMENT } from './core/Weapons.js';
 import { setVolume, resumeAudio, playUiClick } from './core/Audio.js';
+import { settings } from './core/Settings.js';
 
 const career = new CareerManager();
 const canvas = document.getElementById('game-canvas');
@@ -109,6 +110,7 @@ document.getElementById('btn-deploy').addEventListener('click', () => {
   resumeAudio(); playUiClick();
   showScreen('game');
   runner.start(currentMissionDef, { onEnd: handleMissionEnd });
+  runner.input.requestLock();
 });
 
 // ---------------------------------------------------------------- in-mission overlays
@@ -124,10 +126,15 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-document.getElementById('btn-resume').addEventListener('click', () => { pauseMenu.classList.add('hidden'); runner.setPaused(false); });
+document.getElementById('btn-resume').addEventListener('click', () => {
+  pauseMenu.classList.add('hidden');
+  runner.setPaused(false);
+  runner.input.requestLock();
+});
 document.getElementById('btn-restart-mission').addEventListener('click', () => {
   pauseMenu.classList.add('hidden');
   runner.start(currentMissionDef, { onEnd: handleMissionEnd });
+  runner.input.requestLock();
 });
 document.getElementById('btn-controls').addEventListener('click', () => controlsOverlay.classList.remove('hidden'));
 document.getElementById('btn-close-controls').addEventListener('click', () => controlsOverlay.classList.add('hidden'));
@@ -208,6 +215,7 @@ function showDebrief(mission, result, passed) {
     playUiClick();
     showScreen('game');
     runner.start(currentMissionDef, { onEnd: handleMissionEnd });
+    runner.input.requestLock();
   };
   document.getElementById('btn-debrief-menu').onclick = () => { playUiClick(); showScreen('menu'); };
 
@@ -245,6 +253,9 @@ function renderArmory() {
 const volSlider = document.getElementById('opt-volume');
 volSlider.addEventListener('input', () => setVolume(volSlider.value / 100));
 setVolume(volSlider.value / 100);
+
+const sensSlider = document.getElementById('opt-sens');
+sensSlider.addEventListener('input', () => { settings.mouseSensitivity = sensSlider.value / 100; });
 
 document.getElementById('opt-hints').addEventListener('change', (e) => {
   document.getElementById('hud-command-bar').style.display = e.target.checked ? '' : 'none';

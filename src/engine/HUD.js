@@ -10,7 +10,7 @@ export function initCommandBar() {
   bar.innerHTML = `
     <div class="cmd"><b>1</b> Follow</div>
     <div class="cmd"><b>2</b> Hold</div>
-    <div class="cmd"><b>3</b> Move To</div>
+    <div class="cmd"><b>3</b> Move Ahead</div>
     <div class="cmd"><b>4</b> Breach</div>
     <div class="cmd"><b>Space</b> Freeze!</div>
     <div class="cmd"><b>E</b> Interact</div>
@@ -52,7 +52,5 @@ export function updateHUD(mission, input) {
     banner.classList.remove('show');
   }
 
-  const crosshair = document.getElementById('hud-crosshair');
-  crosshair.style.left = `${input.mouseCanvas.x}px`;
-  crosshair.style.top = `${input.mouseCanvas.y}px`;
+  document.getElementById('hud-flash-overlay').style.opacity = p.isStunned ? Math.min(0.85, p.stunTimer / 3) : 0;
 }
