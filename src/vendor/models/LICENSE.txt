@@ -1,0 +1,13 @@
+Character models (characters/), weapon models (weapons/) and prop models
+(props/) are sourced from Kenney (www.kenney.nl):
+
+  - "Blocky Characters" - https://kenney.nl/assets/blocky-characters
+  - "Blaster Kit"        - https://kenney.nl/assets/blaster-kit
+
+License: Creative Commons Zero (CC0 1.0) - https://creativecommons.org/publicdomain/zero/1.0/
+Free for personal, educational, and commercial use. Attribution is not
+required but is appreciated: credit "Kenney" / www.kenney.nl.
+
+Character texture variants were selected (not modified) from the pack's
+existing 18 palette options to fit in-game roles (teammate/suspect/hostage/
+civilian). Weapon models are recolored at runtime in Renderer3D.js.

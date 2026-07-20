@@ -18,4 +18,14 @@ export function hall(grid, x0, y0, x1, y1) { room(grid, x0, y0, x1, y1, '.'); }
 
 export function door(grid, x, y) { grid[y][x] = 'D'; }
 
+// All tile coordinates within a rectangle — handy for turning an obstacle
+// rect into a list of decorative prop positions (one per tile).
+export function rectTiles(x0, y0, x1, y1) {
+  const tiles = [];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) tiles.push({ tx: x, ty: y });
+  }
+  return tiles;
+}
+
 export function tile(tx, ty) { return { x: tx * 32 + 16, y: ty * 32 + 16 }; }

@@ -5,6 +5,7 @@ import { drawMapPreview } from './ui/mapPreview.js';
 import { WEAPONS, EQUIPMENT } from './core/Weapons.js';
 import { setVolume, resumeAudio, playUiClick } from './core/Audio.js';
 import { settings } from './core/Settings.js';
+import { preloadAll } from './engine/ModelLibrary.js';
 
 const career = new CareerManager();
 const canvas = document.getElementById('game-canvas');
@@ -269,6 +270,14 @@ document.getElementById('btn-reset-career').addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------- boot
-showScreen('menu');
+preloadAll((done, total) => {
+  document.getElementById('loading-bar-fill').style.width = `${(done / total) * 100}%`;
+  document.getElementById('loading-text').textContent = `Loading tactical equipment… ${done}/${total}`;
+}).then(() => {
+  showScreen('menu');
+}).catch((err) => {
+  console.error('Asset preload failed', err);
+  document.getElementById('loading-text').textContent = 'Failed to load assets — check console and refresh.';
+});
 
 window.__game = { runner, career };

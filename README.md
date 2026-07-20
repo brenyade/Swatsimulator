@@ -22,6 +22,14 @@ and Three.js is vendored directly in `src/vendor/three.module.js`.
 - **First-person 3D** — real WebGL scenes (walls, doors, floors, lighting,
   fog) built from the same tile maps, with mouse-look (pointer lock), a
   weapon viewmodel, and recoil kick.
+- **Real 3D character & weapon models** — rigged, animated humanoid models
+  (CC0, via Kenney's "Blocky Characters") play idle/walk/sprint/aim/shoot/die
+  clips per AI state, with distinct looks for teammates, suspects, hostages
+  and civilians. Weapons are real 3D models (Kenney's "Blaster Kit") recolored
+  to tactical gunmetal tones for both the player viewmodel and NPCs.
+- **Dressed-up maps** — the warehouse mission's cover is built from real
+  stacked-crate props instead of flat wall blocks, with a tiled floor texture,
+  ceiling, and fog throughout.
 - **Play Now** — jump straight into a standalone tactical deployment.
 - **Career Mode** — a 5-mission story campaign (Metro City SWAT, Team 5) with
   briefings, a mission-select dossier, unlockable missions, and per-mission
@@ -65,9 +73,10 @@ and Three.js is vendored directly in `src/vendor/three.module.js`.
 
 ```
 index.html / styles.css   Screens & UI chrome
-src/main.js                Screen navigation & app wiring
-src/vendor/                 Vendored Three.js build (MIT licensed, no CDN dependency)
-src/engine/                Game loop, 3D renderer, input, pathfinding/LOS, mission runtime
+src/main.js                Screen navigation & app wiring, asset preload
+src/vendor/                 Vendored Three.js + GLTFLoader (MIT/CC0, no CDN dependency)
+src/vendor/models/          Character/weapon/prop GLB models (Kenney, CC0 — see LICENSE.txt)
+src/engine/                Game loop, 3D renderer, model library, input, pathfinding/LOS, mission runtime
 src/entities/               Player, Teammate, Suspect, Hostage, Civilian
 src/core/                   Weapons, combat resolution, commands, scoring, career save, audio, settings
 src/maps/                   Procedural map builder + all 6 mission definitions

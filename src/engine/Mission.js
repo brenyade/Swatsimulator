@@ -51,6 +51,7 @@ export class Mission {
     });
 
     this.evidencePoints = (def.evidence || []).map((e) => ({ ...tile(e.tx, e.ty), tx: e.tx, ty: e.ty, collected: false }));
+    this.propPoints = (def.props || []).map((p) => ({ ...tile(p.tx, p.ty), tx: p.tx, ty: p.ty, type: p.type }));
 
     this.tracers = [];
     this.effects = [];

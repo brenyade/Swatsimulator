@@ -24,6 +24,7 @@ export class Teammate extends Entity {
     this.moveTarget = null;
     this.breachDoor = null;
     this.breachPhase = null;
+    this.engaging = null;
   }
 
   formationOffset(player) {
@@ -56,6 +57,7 @@ export class Teammate extends Entity {
     if (this.stunTimer > 0) return;
 
     const threat = this.findVisibleThreat(mission);
+    this.engaging = threat;
     if (threat) {
       const weapon = WEAPONS[this.weaponId];
       const d = dist(this.x, this.y, threat.x, threat.y);

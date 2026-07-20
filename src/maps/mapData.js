@@ -1,4 +1,6 @@
-import { newGrid, room, door } from './builder.js';
+import {
+  newGrid, room, door, rectTiles,
+} from './builder.js';
 
 function finalizeGrid(grid) {
   return { width: grid[0].length, height: grid.length, grid };
@@ -172,16 +174,13 @@ function buildMission4() {
   const g = newGrid(28, 18);
   room(g, 1, 1, 26, 16);               // one big warehouse floor
   // crate stacks as cover / maze structure
-  room(g, 4, 3, 6, 5, '#');
-  room(g, 9, 2, 11, 3, '#');
-  room(g, 14, 4, 17, 6, '#');
-  room(g, 20, 2, 22, 5, '#');
-  room(g, 3, 9, 5, 12, '#');
-  room(g, 8, 8, 8, 13, '#');
-  room(g, 12, 10, 15, 12, '#');
-  room(g, 18, 9, 20, 13, '#');
-  room(g, 23, 8, 25, 11, '#');
-  room(g, 10, 14, 12, 15, '#');
+  const crateRects = [
+    [4, 3, 6, 5], [9, 2, 11, 3], [14, 4, 17, 6], [20, 2, 22, 5],
+    [3, 9, 5, 12], [8, 8, 8, 13], [12, 10, 15, 12], [18, 9, 20, 13],
+    [23, 8, 25, 11], [10, 14, 12, 15],
+  ];
+  for (const [x0, y0, x1, y1] of crateRects) room(g, x0, y0, x1, y1, '#');
+  const crateProps = crateRects.flatMap(([x0, y0, x1, y1]) => rectTiles(x0, y0, x1, y1));
 
   // office (mini-boss room) partitioned in far corner
   room(g, 21, 13, 26, 16, '#');
@@ -192,6 +191,7 @@ function buildMission4() {
     id: 'm4',
     name: 'Warehouse Gang Stronghold',
     ...finalizeGrid(g),
+    props: crateProps.map((t) => ({ ...t, type: 'crate' })),
     playerStart: { tx: 2, ty: 16 },
     teammates: [{ tx: 2, ty: 15 }, { tx: 3, ty: 16 }],
     suspects: [

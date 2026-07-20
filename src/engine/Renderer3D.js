@@ -1,4 +1,7 @@
 import * as THREE from '../vendor/three.module.js';
+import {
+  spawnCharacter, spawnWeapon, spawnProp, ROLE_VARIANTS,
+} from './ModelLibrary.js';
 
 // One world unit == half a tile (32px). Keeps corridors ~2 units wide and
 // rooms human-scaled instead of cavernous.
@@ -11,9 +14,11 @@ export const gx = (x) => x * SCALE;
 export const gz = (y) => y * SCALE;
 export const yawFromFacing = (facing) => -facing - Math.PI / 2;
 
-const STATE_COLOR = {
-  idle: 0x8a8a8a, alert: 0xe8b84b, hostile: 0xe63946, surrendering: 0xf2e94e, arrested: 0x555555, dead: 0x333333,
-};
+// Weapons are attached to the torso rather than the (single rigid-bone, no
+// wrist) arm — the arm's rotation swings wildly between animation poses, so
+// a torso-relative offset gives a stable "held at the ready" look instead.
+const WEAPON_GRIP = { x: 0.62, y: 0.5, z: 0.2 };
+const WEAPON_GRIP_ROT = { x: 0, y: Math.PI / 2, z: 0 };
 
 function makeCheckerTexture(c1, c2, repeatX, repeatY) {
   const canvas = document.createElement('canvas');
@@ -28,34 +33,18 @@ function makeCheckerTexture(c1, c2, repeatX, repeatY) {
   return tex;
 }
 
-function disposeObject(obj) {
-  obj.traverse((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) {
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      mats.forEach((m) => { m.map?.dispose(); m.dispose(); });
-    }
-  });
+function pickVariant(role, seed) {
+  const list = ROLE_VARIANTS[role];
+  return list[seed % list.length];
 }
 
-function buildHumanoid(bodyColor = 0xffffff) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.28, 0.95, 4, 8),
-    new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.7 }),
-  );
-  body.position.y = 0.28 + 0.475;
-  group.add(body);
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.11, 0.28, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x222222 }),
-  );
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.set(0, body.position.y + 0.25, -0.34);
-  group.add(nose);
-  group.userData.body = body;
-  group.userData.nose = nose;
-  return group;
+function attachWeapon(instance, weaponId) {
+  const weapon = spawnWeapon(weaponId);
+  weapon.position.set(WEAPON_GRIP.x, WEAPON_GRIP.y, WEAPON_GRIP.z);
+  weapon.rotation.set(WEAPON_GRIP_ROT.x, WEAPON_GRIP_ROT.y, WEAPON_GRIP_ROT.z);
+  weapon.scale.setScalar(1.1);
+  instance.torso.add(weapon);
+  return weapon;
 }
 
 function buildEliteMarker() {
@@ -63,7 +52,7 @@ function buildEliteMarker() {
     new THREE.OctahedronGeometry(0.14, 0),
     new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaaaaa, emissiveIntensity: 0.6 }),
   );
-  marker.position.y = 1.9;
+  marker.position.y = 2.05;
   return marker;
 }
 
@@ -80,45 +69,37 @@ export class Renderer3D {
     this.headlamp = new THREE.PointLight(0xffedc4, 1.3, 12, 2);
     this.camera.add(this.headlamp);
 
-    this.viewmodel = this._buildViewmodel();
+    this.viewmodel = new THREE.Group();
+    this.viewmodelWeaponId = null;
+    this.viewmodelMesh = null;
     this.camera.add(this.viewmodel);
 
     this.scene = null;
-    this.entityMeshes = new Map();
+    this.entityInstances = new Map(); // entity.id -> { instance, kind, lastX, lastY, animName }
     this.doorMeshes = [];
     this.evidenceMeshes = [];
     this.tracerGroup = null;
     this.markerRing = null;
+    this._disposables = [];
     this._clock = 0;
   }
 
-  _buildViewmodel() {
-    const group = new THREE.Group();
-    const gun = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.14, 0.55),
-      new THREE.MeshStandardMaterial({ color: 0x4a4f4a, roughness: 0.35, metalness: 0.5 }),
-    );
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.025, 0.025, 0.35, 8),
-      new THREE.MeshStandardMaterial({ color: 0x232623, roughness: 0.3, metalness: 0.6 }),
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.03, -0.45);
-    const sight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.03, 0.05, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0x111111 }),
-    );
-    sight.position.set(0, 0.1, -0.15);
-    const light = new THREE.PointLight(0xffffff, 0.4, 2);
-    light.position.set(0, 0.3, 0.3);
-    group.add(gun, barrel, sight, light);
-    group.position.set(0.24, -0.26, -0.5);
-    return group;
+  _setViewmodelWeapon(weaponId) {
+    if (this.viewmodelWeaponId === weaponId) return;
+    if (this.viewmodelMesh) this.viewmodel.remove(this.viewmodelMesh);
+    const weapon = spawnWeapon(weaponId);
+    weapon.position.set(0.26, -0.28, -0.72);
+    weapon.rotation.y = Math.PI / 2;
+    weapon.scale.setScalar(0.55);
+    this.viewmodel.add(weapon);
+    this.viewmodelMesh = weapon;
+    this.viewmodelWeaponId = weaponId;
   }
 
   disposeScene() {
-    if (this.scene) disposeObject(this.scene);
-    this.entityMeshes.clear();
+    for (const d of this._disposables) d();
+    this._disposables = [];
+    this.entityInstances.clear();
     this.doorMeshes = [];
     this.evidenceMeshes = [];
   }
@@ -139,27 +120,28 @@ export class Renderer3D {
     const w = map.width * TILE_W, h = map.height * TILE_W;
 
     const floorTex = makeCheckerTexture('#1c2118', '#1a1f17', map.width, map.height);
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
-      new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 }),
-    );
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 });
+    const floorGeo = new THREE.PlaneGeometry(w, h);
+    const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(w / 2 - TILE_W / 2, 0, h / 2 - TILE_W / 2);
     scene.add(floor);
+    this._disposables.push(() => { floorGeo.dispose(); floorMat.dispose(); floorTex.dispose(); });
 
-    const ceiling = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
-      new THREE.MeshStandardMaterial({ color: 0x11140f, roughness: 1 }),
-    );
+    const ceilGeo = new THREE.PlaneGeometry(w, h);
+    const ceilMat = new THREE.MeshStandardMaterial({ color: 0x11140f, roughness: 1 });
+    const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(w / 2 - TILE_W / 2, WALL_H, h / 2 - TILE_W / 2);
     scene.add(ceiling);
+    this._disposables.push(() => { ceilGeo.dispose(); ceilMat.dispose(); });
 
-    // walls — single instanced mesh for every solid tile
+    // walls — single instanced mesh for every solid tile that isn't a decorative prop
+    const propTileKeys = new Set(mission.propPoints.map((p) => `${p.tx},${p.ty}`));
     const wallTiles = [];
     for (let ty = 0; ty < map.height; ty++) {
       for (let tx = 0; tx < map.width; tx++) {
-        if (map.grid[ty][tx] === '#') wallTiles.push([tx, ty]);
+        if (map.grid[ty][tx] === '#' && !propTileKeys.has(`${tx},${ty}`)) wallTiles.push([tx, ty]);
       }
     }
     const wallGeo = new THREE.BoxGeometry(TILE_W, WALL_H, TILE_W);
@@ -172,77 +154,150 @@ export class Renderer3D {
     });
     wallMesh.count = wallTiles.length;
     scene.add(wallMesh);
+    this._disposables.push(() => { wallGeo.dispose(); wallMat.dispose(); });
 
     // doors — individual meshes so they can be hidden once opened
     this.doorMeshes = [];
+    const doorGeo = new THREE.BoxGeometry(TILE_W * 0.92, WALL_H * 0.9, TILE_W * 0.92);
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.8 });
     for (const d of mission.doorTiles) {
-      const door = new THREE.Mesh(
-        new THREE.BoxGeometry(TILE_W * 0.92, WALL_H * 0.9, TILE_W * 0.92),
-        new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.8 }),
-      );
+      const door = new THREE.Mesh(doorGeo, doorMat);
       door.position.set(gx(d.wx), WALL_H * 0.45, gz(d.wy));
       door.userData.key = `${d.tx},${d.ty}`;
       scene.add(door);
       this.doorMeshes.push(door);
     }
+    this._disposables.push(() => { doorGeo.dispose(); doorMat.dispose(); });
 
     // evidence markers
+    const evGeo = new THREE.OctahedronGeometry(0.22, 0);
+    const evMat = new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x554400, emissiveIntensity: 0.4 });
     this.evidenceMeshes = mission.evidencePoints.map((e) => {
-      const mesh = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.22, 0),
-        new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x554400, emissiveIntensity: 0.4 }),
-      );
+      const mesh = new THREE.Mesh(evGeo, evMat);
       mesh.position.set(gx(e.x), 1.1, gz(e.y));
       mesh.userData.evidence = e;
       scene.add(mesh);
       return mesh;
     });
+    this._disposables.push(() => { evGeo.dispose(); evMat.dispose(); });
 
     // move-to-marker ring (hidden until used)
-    this.markerRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.35, 0.5, 24),
-      new THREE.MeshBasicMaterial({ color: 0x3ddc84, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
-    );
+    const ringGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x3ddc84, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+    this.markerRing = new THREE.Mesh(ringGeo, ringMat);
     this.markerRing.rotation.x = -Math.PI / 2;
     this.markerRing.visible = false;
     scene.add(this.markerRing);
+    this._disposables.push(() => { ringGeo.dispose(); ringMat.dispose(); });
+
+    // decorative props (crate stacks etc.) sitting where a plain wall would be
+    for (const p of mission.propPoints) {
+      const seedAngle = ((p.tx * 7 + p.ty * 13) % 4) * (Math.PI / 2);
+      const crateScale = 1.7;
+      const base = spawnProp('crateMedium');
+      base.scale.setScalar(crateScale);
+      base.rotation.y = seedAngle;
+      base.position.set(gx(p.x), 0, gz(p.y));
+      scene.add(base);
+      if ((p.tx + p.ty) % 2 === 0) {
+        const top = spawnProp('crateSmall');
+        top.scale.setScalar(crateScale);
+        top.rotation.y = seedAngle + Math.PI / 3;
+        top.position.set(gx(p.x), 0.37 * crateScale, gz(p.y));
+        scene.add(top);
+      }
+    }
 
     // tracer group
     this.tracerGroup = new THREE.Group();
     scene.add(this.tracerGroup);
 
     this.scene = scene;
+
+    // characters
+    let ti = 0, si = 0, hi = 0, ci = 0;
+    for (const t of mission.teammates) this._createInstance(t, 'teammate', ti++);
+    for (const s of mission.suspects) this._createInstance(s, 'suspect', si++);
+    for (const h of mission.hostages) this._createInstance(h, 'hostage', hi++);
+    for (const c of mission.civilians) this._createInstance(c, 'civilian', ci++);
+
+    this._setViewmodelWeapon(mission.player.currentWeaponId);
   }
 
-  _meshFor(entity) {
-    let mesh = this.entityMeshes.get(entity.id);
-    if (!mesh) {
-      mesh = buildHumanoid();
-      if (entity.elite) mesh.add(buildEliteMarker());
-      this.scene.add(mesh);
-      this.entityMeshes.set(entity.id, mesh);
+  _createInstance(entity, kind, seed) {
+    let role = kind;
+    let weaponId = null;
+    if (kind === 'suspect') {
+      role = entity.elite ? 'eliteSuspect' : 'suspect';
+      if (entity.armed) weaponId = entity.weaponId;
+    } else if (kind === 'teammate') {
+      weaponId = 'mp5';
+    } else if (kind === 'hostage') {
+      role = seed % 2 === 0 ? 'hostageBusiness' : 'hostageCasual';
     }
-    return mesh;
+    const variant = pickVariant(role, seed);
+    const instance = spawnCharacter(variant);
+    if (entity.elite) instance.root.add(buildEliteMarker());
+    if (weaponId) attachWeapon(instance, weaponId);
+    this.scene.add(instance.root);
+    this.entityInstances.set(entity.id, {
+      instance, kind, lastX: entity.x, lastY: entity.y, animName: null,
+    });
   }
 
-  _updateHumanoid(entity, baseColor, extra) {
-    const visible = entity.alive && !(entity.state === 'dead');
-    const mesh = this._meshFor(entity);
-    mesh.visible = visible;
-    if (!visible) return;
-    mesh.position.set(gx(entity.x), 0, gz(entity.y));
-    mesh.rotation.y = yawFromFacing(entity.facing);
-    mesh.userData.body.material.color.setHex(baseColor);
-    extra?.(mesh);
+  _animNameFor(entity, kind, moving) {
+    if (!entity.alive) return { name: 'die', loopOnce: true };
+    if (kind === 'suspect') {
+      switch (entity.state) {
+        case 'alert': return { name: 'idle' };
+        case 'hostile': return { name: entity.target ? 'shoot' : (moving ? 'walk' : 'idle') };
+        case 'surrendering': return { name: 'react' };
+        case 'arrested': return { name: 'kneel' };
+        case 'fleeing': return { name: 'sprint' };
+        default: return { name: moving ? 'walk' : 'idle' };
+      }
+    }
+    if (kind === 'teammate') {
+      return { name: entity.engaging ? 'shoot' : (moving ? 'walk' : 'idle') };
+    }
+    if (kind === 'hostage') {
+      if (entity.state === 'held') return { name: 'kneel' };
+      return { name: moving ? 'sprint' : 'idle' };
+    }
+    // civilian
+    if (entity.state === 'panic') return { name: 'sprint' };
+    return { name: moving ? 'walk' : 'idle' };
+  }
+
+  _updateInstance(entity, dt) {
+    const rec = this.entityInstances.get(entity.id);
+    if (!rec) return;
+    const { instance } = rec;
+    const moved = Math.hypot(entity.x - rec.lastX, entity.y - rec.lastY);
+    const moving = moved > 0.15;
+    rec.lastX = entity.x; rec.lastY = entity.y;
+
+    const visible = entity.alive || rec.animName === 'die';
+    instance.root.visible = true; // keep visible through the die animation, then hide below
+    if (!entity.alive && rec.diedAt === undefined) rec.diedAt = this._clock;
+    if (!entity.alive && this._clock - rec.diedAt > 2.5) instance.root.visible = false;
+
+    instance.root.position.set(gx(entity.x), 0, gz(entity.y));
+    instance.root.rotation.y = yawFromFacing(entity.facing);
+
+    const anim = this._animNameFor(entity, rec.kind, moving);
+    instance.play(anim.name, { loopOnce: !!anim.loopOnce });
+    rec.animName = anim.name;
+    instance.update(dt);
   }
 
   update(mission, dt, marker) {
     this._clock += dt;
 
-    for (const t of mission.teammates) this._updateHumanoid(t, 0x3ddcd0);
-    for (const s of mission.suspects) this._updateHumanoid(s, STATE_COLOR[s.state] ?? 0x8a8a8a);
-    for (const h of mission.hostages) this._updateHumanoid(h, h.state === 'freed' ? 0x8fd6ff : 0xf2e94e);
-    for (const c of mission.civilians) this._updateHumanoid(c, c.state === 'panic' ? 0xe0a458 : 0x5fb46a);
+    for (const t of mission.teammates) this._updateInstance(t, dt);
+    for (const s of mission.suspects) this._updateInstance(s, dt);
+    for (const h of mission.hostages) this._updateInstance(h, dt);
+    for (const c of mission.civilians) this._updateInstance(c, dt);
 
     // doors
     for (const d of this.doorMeshes) d.visible = !mission.map.openDoors.has(d.userData.key);
@@ -280,8 +335,10 @@ export class Renderer3D {
     this.camera.rotation.y = yawFromFacing(p.facing);
     this.camera.rotation.x = p.pitch;
 
+    this._setViewmodelWeapon(p.currentWeaponId);
+
     // viewmodel recoil + fov kick
-    this.viewmodel.position.z = -0.5 + p.recoil * 0.12;
+    this.viewmodel.position.z = p.recoil * 0.12;
     this.viewmodel.rotation.x = -p.recoil * 0.25;
     const targetFov = 78 + p.recoil * 4;
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
