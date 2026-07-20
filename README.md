@@ -38,6 +38,12 @@ and Three.js is vendored directly in `src/vendor/three.module.js`.
 - **Custom rifle model** — a hand-built (procedural, no external asset)
   designated-marksman rifle with a raised scope, ported handguard, curved
   magazine, and skeletonized stock, used as the Home Invasion loadout.
+- **Custom Map upload** — write your own map as JSON (a tile grid plus
+  spawn points) and load it straight from the main menu. It gets the same
+  client-side validation as the build-time map checker (every spawn point
+  on a floor tile and reachable) and the same AI as every built-in mission
+  automatically — no code changes or redeploy needed. See "CUSTOM MAP" in
+  the main menu for the schema and a downloadable template.
 - **Career Mode** — a 5-mission story campaign (Metro City SWAT, Team 5) with
   briefings, a mission-select dossier, unlockable missions, and per-mission
   best-grade tracking saved to `localStorage`.

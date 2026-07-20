@@ -6,6 +6,7 @@ import { WEAPONS, EQUIPMENT } from './core/Weapons.js';
 import { setVolume, resumeAudio, playUiClick } from './core/Audio.js';
 import { settings } from './core/Settings.js';
 import { preloadAll } from './engine/ModelLibrary.js';
+import { buildCustomMission, CUSTOM_MAP_TEMPLATE } from './maps/customMap.js';
 
 const career = new CareerManager();
 const canvas = document.getElementById('game-canvas');
@@ -37,6 +38,7 @@ document.getElementById('btn-play-now').addEventListener('click', () => {
 });
 document.getElementById('btn-career').addEventListener('click', () => { resumeAudio(); playUiClick(); renderCareerScreen(); showScreen('career'); });
 document.getElementById('btn-armory').addEventListener('click', () => { playUiClick(); renderArmory(); showScreen('armory'); });
+document.getElementById('btn-custom-map').addEventListener('click', () => { playUiClick(); showScreen('custom'); });
 document.getElementById('btn-options').addEventListener('click', () => { playUiClick(); showScreen('options'); });
 document.getElementById('btn-credits').addEventListener('click', () => { playUiClick(); showScreen('credits'); });
 
@@ -249,6 +251,55 @@ function renderArmory() {
     </div>`);
   body.innerHTML = cards.join('');
 }
+
+// ---------------------------------------------------------------- custom map
+const customTextarea = document.getElementById('custom-json');
+const customErrors = document.getElementById('custom-errors');
+
+document.getElementById('custom-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  customTextarea.value = await file.text();
+  customErrors.innerHTML = '';
+  e.target.value = '';
+});
+
+document.getElementById('btn-custom-template').addEventListener('click', () => {
+  playUiClick();
+  customTextarea.value = JSON.stringify(CUSTOM_MAP_TEMPLATE, null, 2);
+  customErrors.innerHTML = '';
+});
+
+document.getElementById('btn-custom-download').addEventListener('click', () => {
+  playUiClick();
+  const blob = new Blob([JSON.stringify(CUSTOM_MAP_TEMPLATE, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'swat-simulator-map-template.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-custom-deploy').addEventListener('click', () => {
+  playUiClick();
+  let parsed;
+  try {
+    parsed = JSON.parse(customTextarea.value);
+  } catch (err) {
+    customErrors.innerHTML = `<div class="err-item">Invalid JSON: ${err.message}</div>`;
+    return;
+  }
+  const result = buildCustomMission(parsed);
+  if (!result.ok) {
+    customErrors.innerHTML = result.errors.map((e) => `<div class="err-item">${e}</div>`).join('');
+    return;
+  }
+  customErrors.innerHTML = `<div class="err-ok">Map valid — deploying "${result.mission.name}"…</div>`;
+  resumeAudio();
+  currentMissionDef = result.mission;
+  currentCareerIndex = null;
+  openBriefing();
+});
 
 // ---------------------------------------------------------------- options
 const volSlider = document.getElementById('opt-volume');

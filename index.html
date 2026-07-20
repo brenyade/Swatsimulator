@@ -28,6 +28,7 @@
           <button id="btn-play-now" class="btn btn-primary btn-large">▶ PLAY NOW</button>
           <button id="btn-career" class="btn btn-large">CAREER MODE</button>
           <button id="btn-armory" class="btn btn-large">ARMORY &amp; LOADOUT</button>
+          <button id="btn-custom-map" class="btn btn-large">CUSTOM MAP</button>
           <button id="btn-options" class="btn btn-large">OPTIONS</button>
           <button id="btn-credits" class="btn btn-large">CREDITS</button>
         </nav>
@@ -73,6 +74,48 @@
         <button class="btn btn-back" data-back="menu">← BACK</button>
       </div>
       <div id="armory-body" class="armory-body"></div>
+    </section>
+
+    <!-- ===================== CUSTOM MAP ===================== -->
+    <section id="screen-custom" class="screen">
+      <div class="panel-header">
+        <h2>CUSTOM MAP</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div class="custom-body">
+        <div class="custom-editor">
+          <div class="custom-toolbar">
+            <label class="btn" for="custom-file-input">UPLOAD .JSON</label>
+            <input type="file" id="custom-file-input" accept=".json,application/json" hidden>
+            <button id="btn-custom-template" class="btn">LOAD TEMPLATE</button>
+            <button id="btn-custom-download" class="btn">DOWNLOAD TEMPLATE</button>
+          </div>
+          <textarea id="custom-json" class="custom-textarea" spellcheck="false" placeholder="Paste your map JSON here, or upload/load a template above."></textarea>
+          <div id="custom-errors" class="custom-errors"></div>
+          <div class="briefing-actions">
+            <span></span>
+            <button id="btn-custom-deploy" class="btn btn-primary btn-large">VALIDATE &amp; DEPLOY ▶</button>
+          </div>
+        </div>
+        <div class="custom-docs">
+          <h4>MAP FORMAT</h4>
+          <p><code>grid</code>: array of equal-length row strings. <code>#</code> wall,
+             <code>.</code> floor, <code>D</code> door.</p>
+          <p><code>playerStart</code>: <code>{tx, ty}</code> tile coords (required).</p>
+          <p>Optional arrays (all entries are <code>{tx, ty, ...}</code>):
+             <code>teammates</code>, <code>suspects</code> (<code>armed</code>,
+             <code>willSurrender</code> 0-1, <code>name</code>, <code>elite</code>,
+             <code>patrol</code>), <code>hostages</code>, <code>civilians</code>
+             (<code>wanderRadius</code>), <code>evidence</code>.</p>
+          <p>Also optional: <code>name</code>, <code>briefing</code>, <code>timeLimit</code>
+             (seconds), <code>loadout</code> <code>{lethal, nonlethal}</code>,
+             <code>objectives</code> (auto-generated if omitted).</p>
+          <p>Every spawn point must sit on a floor tile and be reachable from
+             <code>playerStart</code> — the validator checks both before letting
+             you deploy, and NPCs get the same AI as every built-in mission
+             automatically once the map loads.</p>
+        </div>
+      </div>
     </section>
 
     <!-- ===================== OPTIONS ===================== -->
