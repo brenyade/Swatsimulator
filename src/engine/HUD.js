@@ -13,7 +13,7 @@ export function initCommandBar() {
     <div class="cmd"><b>3</b> Move Ahead</div>
     <div class="cmd"><b>4</b> Breach</div>
     <div class="cmd"><b>Space</b> Freeze!</div>
-    <div class="cmd"><b>E</b> Interact</div>
+    <div class="cmd"><b>E</b> Interact / Kick Door</div>
     <div class="cmd"><b>F</b> Flashbang</div>
     <div class="cmd"><b>Q</b> Switch Weapon</div>
   `;

@@ -6,18 +6,24 @@ import { Civilian } from '../entities/Civilian.js';
 import { ScoreManager } from '../core/ScoreManager.js';
 import { tile } from '../maps/builder.js';
 import { dist } from './utils.js';
-import { playFlashbang, playHurt } from '../core/Audio.js';
+import { playFlashbang, playHurt, playKick } from '../core/Audio.js';
 
 const TEAM_NAMES = ['ALPHA', 'BRAVO'];
 
 export class Mission {
   constructor(def) {
     this.def = def;
-    this.map = { width: def.width, height: def.height, grid: def.grid, openDoors: new Set() };
+    this.lockedDoorKeys = new Set((def.lockedDoors || []).map((d) => `${d.tx},${d.ty}`));
+    this.map = {
+      width: def.width, height: def.height, grid: def.grid, openDoors: new Set(), lockedDoors: this.lockedDoorKeys,
+    };
     this.doorTiles = [];
     for (let y = 0; y < def.height; y++) {
       for (let x = 0; x < def.width; x++) {
-        if (def.grid[y][x] === 'D') this.doorTiles.push({ tx: x, ty: y, wx: x * 32 + 16, wy: y * 32 + 16 });
+        if (def.grid[y][x] === 'D') {
+          const locked = this.lockedDoorKeys.has(`${x},${y}`);
+          this.doorTiles.push({ tx: x, ty: y, wx: x * 32 + 16, wy: y * 32 + 16, locked });
+        }
       }
     }
 
@@ -78,6 +84,23 @@ export class Mission {
   addTracers(list) { for (const t of list) this.tracers.push({ ...t, age: 0 }); }
 
   openDoor(tx, ty) { this.map.openDoors.add(`${tx},${ty}`); }
+
+  isDoorLocked(tx, ty) {
+    const key = `${tx},${ty}`;
+    return this.lockedDoorKeys.has(key) && !this.map.openDoors.has(key);
+  }
+
+  // A locked door won't budge until the player forces it — bypasses the
+  // normal walk-up-and-it-opens convention for a dramatic breach moment.
+  kickDoor(tx, ty) {
+    if (!this.isDoorLocked(tx, ty)) return false;
+    this.openDoor(tx, ty);
+    this.markLoudEvent(tx * 32 + 16, ty * 32 + 16);
+    this.player.recoil = Math.min(1.6, this.player.recoil + 1.3);
+    playKick();
+    this.banner('DOOR BREACHED');
+    return true;
+  }
 
   markLoudEvent(x, y) { this.lastLoudEventPos = { x, y }; this.lastLoudEventAge = 0; }
 
@@ -151,9 +174,10 @@ export class Mission {
     this.lastLoudEventAge += dt;
     if (this.bannerTimer > 0) this.bannerTimer -= dt;
 
-    // doors open automatically once someone actually walks up to them
+    // doors open automatically once someone actually walks up to them —
+    // except locked doors, which only open via kickDoor()
     for (const d of this.doorTiles) {
-      if (this.map.openDoors.has(`${d.tx},${d.ty}`)) continue;
+      if (d.locked || this.map.openDoors.has(`${d.tx},${d.ty}`)) continue;
       for (const a of this.allActors()) {
         if (dist(a.x, a.y, d.wx, d.wy) < 20) { this.map.openDoors.add(`${d.tx},${d.ty}`); break; }
       }

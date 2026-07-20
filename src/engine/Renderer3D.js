@@ -128,11 +128,19 @@ export class Renderer3D {
     scene.add(floor);
     this._disposables.push(() => { floorGeo.dispose(); floorMat.dispose(); floorTex.dispose(); });
 
-    const ceilGeo = new THREE.PlaneGeometry(w, h);
+    // Ceiling only covers the indoor footprint (ceilingRect, tile bounds) so
+    // maps with an outdoor area — a yard, a street — stay open to the sky
+    // out there instead of feeling like one giant covered box.
+    const cr = mission.def.ceilingRect;
+    const ceilW = cr ? (cr.x1 - cr.x0 + 1) * TILE_W : w;
+    const ceilH = cr ? (cr.y1 - cr.y0 + 1) * TILE_W : h;
+    const ceilCx = cr ? gx((cr.x0 + cr.x1 + 1) / 2 * 32) : w / 2 - TILE_W / 2;
+    const ceilCz = cr ? gz((cr.y0 + cr.y1 + 1) / 2 * 32) : h / 2 - TILE_W / 2;
+    const ceilGeo = new THREE.PlaneGeometry(ceilW, ceilH);
     const ceilMat = new THREE.MeshStandardMaterial({ color: 0x11140f, roughness: 1 });
     const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
     ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(w / 2 - TILE_W / 2, WALL_H, h / 2 - TILE_W / 2);
+    ceiling.position.set(ceilCx, WALL_H, ceilCz);
     scene.add(ceiling);
     this._disposables.push(() => { ceilGeo.dispose(); ceilMat.dispose(); });
 
@@ -156,18 +164,20 @@ export class Renderer3D {
     scene.add(wallMesh);
     this._disposables.push(() => { wallGeo.dispose(); wallMat.dispose(); });
 
-    // doors — individual meshes so they can be hidden once opened
+    // doors — individual meshes so they can be hidden once opened. Locked
+    // doors (need a kick) get a distinct reinforced-steel look.
     this.doorMeshes = [];
     const doorGeo = new THREE.BoxGeometry(TILE_W * 0.92, WALL_H * 0.9, TILE_W * 0.92);
     const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.8 });
+    const lockedDoorMat = new THREE.MeshStandardMaterial({ color: 0x3b4048, roughness: 0.5, metalness: 0.4 });
     for (const d of mission.doorTiles) {
-      const door = new THREE.Mesh(doorGeo, doorMat);
+      const door = new THREE.Mesh(doorGeo, d.locked ? lockedDoorMat : doorMat);
       door.position.set(gx(d.wx), WALL_H * 0.45, gz(d.wy));
       door.userData.key = `${d.tx},${d.ty}`;
       scene.add(door);
       this.doorMeshes.push(door);
     }
-    this._disposables.push(() => { doorGeo.dispose(); doorMat.dispose(); });
+    this._disposables.push(() => { doorGeo.dispose(); doorMat.dispose(); lockedDoorMat.dispose(); });
 
     // evidence markers
     const evGeo = new THREE.OctahedronGeometry(0.22, 0);

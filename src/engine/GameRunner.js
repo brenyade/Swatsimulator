@@ -67,7 +67,8 @@ export class GameRunner {
     if (input.wasPressed('f')) {
       const door = findNearestDoor(mission, mission.player.x, mission.player.y, 55);
       if (door && !mission.map.openDoors.has(`${door.tx},${door.ty}`)) {
-        mission.openDoor(door.tx, door.ty);
+        if (mission.isDoorLocked(door.tx, door.ty)) mission.kickDoor(door.tx, door.ty);
+        else mission.openDoor(door.tx, door.ty);
         const angle = Math.atan2(door.worldY - mission.player.y, door.worldX - mission.player.x);
         mission.spawnFlashbang(mission.player.x, mission.player.y, angle, true);
         mission.banner('DYNAMIC ENTRY');

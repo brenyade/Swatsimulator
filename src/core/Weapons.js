@@ -16,6 +16,11 @@ export const WEAPONS = {
     damage: 12, pellets: 6, fireDelay: 0.7, range: 220, spread: 0.14,
     magSize: 8, reserveMax: 24, reloadTime: 2.2,
   },
+  dmr: {
+    id: 'dmr', name: 'DMR-762 MARKSMAN RIFLE', lethal: true,
+    damage: 42, fireDelay: 0.5, range: 620, spread: 0.012,
+    magSize: 10, reserveMax: 40, reloadTime: 2.1,
+  },
   taser: {
     id: 'taser', name: 'X26 TASER', lethal: false,
     damage: 0, fireDelay: 1.1, range: 180, spread: 0.01,

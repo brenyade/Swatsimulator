@@ -95,7 +95,11 @@ export function contextInteract(mission) {
   }
   const door = findNearestDoor(mission, player.x, player.y, INTERACT_RANGE + 20);
   if (door) {
-    mission.openDoor(door.tx, door.ty);
-    mission.banner('DOOR OPENED');
+    if (mission.isDoorLocked(door.tx, door.ty)) {
+      mission.kickDoor(door.tx, door.ty);
+    } else {
+      mission.openDoor(door.tx, door.ty);
+      mission.banner('DOOR OPENED');
+    }
   }
 }

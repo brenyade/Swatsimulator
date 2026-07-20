@@ -1,6 +1,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as skeletonClone } from '../vendor/utils/SkeletonUtils.js';
+import { buildDMRRifle } from './ProceduralWeapons.js';
 
 const MODEL_BASE = 'src/vendor/models';
 
@@ -151,6 +152,7 @@ export function spawnCharacter(variantLetter) {
 // ---------------------------------------------------------------- weapons
 
 export function spawnWeapon(weaponId) {
+  if (weaponId === 'dmr') return buildDMRRifle();
   const file = WEAPON_FILES[weaponId] || WEAPON_FILES.m9;
   const gltf = resolvedCache.get(file);
   const root = gltf.scene.clone(true);

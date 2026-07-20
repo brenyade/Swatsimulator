@@ -30,7 +30,14 @@ and Three.js is vendored directly in `src/vendor/three.module.js`.
 - **Dressed-up maps** — the warehouse mission's cover is built from real
   stacked-crate props instead of flat wall blocks, with a tiled floor texture,
   ceiling, and fog throughout.
-- **Play Now** — jump straight into a standalone tactical deployment.
+- **Play Now: Residential Home Invasion** — a house map that starts you
+  outside in the yard. The front and back doors are actually locked (a real
+  collision obstacle, not just closed) — walk up and press `E` to kick them
+  in. Clear the living room, kitchen, and two bedrooms to rescue the
+  homeowners.
+- **Custom rifle model** — a hand-built (procedural, no external asset)
+  designated-marksman rifle with a raised scope, ported handguard, curved
+  magazine, and skeletonized stock, used as the Home Invasion loadout.
 - **Career Mode** — a 5-mission story campaign (Metro City SWAT, Team 5) with
   briefings, a mission-select dossier, unlockable missions, and per-mission
   best-grade tracking saved to `localStorage`.
@@ -64,7 +71,7 @@ and Three.js is vendored directly in `src/vendor/three.module.js`.
 | R | Reload |
 | Q | Switch lethal / less-lethal |
 | F | Throw flashbang (or breach a nearby closed door) |
-| E | Interact — cuff a surrendered suspect, free a hostage, open a door |
+| E | Interact — cuff a surrendered suspect, free a hostage, open a door, kick in a locked door |
 | 1 / 2 / 3 / 4 | Team: Follow / Hold / Move ahead of you / Breach & clear |
 | Space | Order nearby suspects to surrender |
 | Esc | Pause (releases mouse look) |

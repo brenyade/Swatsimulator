@@ -8,36 +8,69 @@ function finalizeGrid(grid) {
 
 // ============================================================
 // QUICK DEPLOYMENT — used by "PLAY NOW". Standalone, not part of career.
+// A residential house: start outside in the yard, kick in the front (or
+// back) door to make entry, then clear room to room.
 // ============================================================
 function buildQuickPlay() {
-  const g = newGrid(20, 13);
-  room(g, 1, 1, 18, 11);              // main open floor
-  room(g, 5, 3, 6, 4, '#');           // shelf
-  room(g, 12, 3, 13, 5, '#');         // shelf
-  room(g, 8, 7, 10, 7, '#');          // counter
-  door(g, 9, 1);                     // unused flourish door on back wall (storage nook)
-  room(g, 8, 0, 11, 0, '#');          // keep border solid (safety)
+  const g = newGrid(24, 27);
+  room(g, 1, 1, 22, 25, '.');           // yard + house footprint + backyard, all open
+
+  // house exterior shell
+  room(g, 5, 7, 18, 7, '#');            // front wall
+  room(g, 5, 23, 18, 23, '#');          // back wall
+  room(g, 5, 7, 5, 23, '#');            // left wall
+  room(g, 18, 7, 18, 23, '#');          // right wall
+  door(g, 11, 7);                       // front door — LOCKED, must be kicked in
+  door(g, 11, 23);                      // back door — LOCKED, secondary/flank entry
+
+  // interior partitions
+  room(g, 10, 9, 10, 21, '#');          // hallway / left-rooms divider
+  room(g, 13, 9, 13, 21, '#');          // hallway / right-rooms divider
+  room(g, 6, 15, 9, 15, '#');           // living room / bedroom 1 divider
+  room(g, 14, 15, 17, 15, '#');         // kitchen / bedroom 2 divider
+  room(g, 6, 22, 9, 22, '#');           // bedroom 1 south wall
+  room(g, 14, 22, 17, 22, '#');         // bedroom 2 south wall
+  door(g, 10, 11);                      // hallway -> living room
+  door(g, 10, 18);                      // hallway -> bedroom 1
+  door(g, 13, 11);                      // hallway -> kitchen
+  door(g, 13, 18);                      // hallway -> bedroom 2
+
+  // furniture obstacles
+  room(g, 7, 12, 8, 12, '#');           // living room couch
+  room(g, 15, 10, 16, 10, '#');         // kitchen island
 
   return {
     id: 'quickplay',
-    name: 'Riverside Pawn Shop',
+    name: 'Residential Home Invasion',
     isQuickPlay: true,
+    ceilingRect: { x0: 5, y0: 7, x1: 18, y1: 23 }, // only the house has a roof — yard stays open-air
     ...finalizeGrid(g),
-    playerStart: { tx: 2, ty: 11 },
-    teammates: [{ tx: 2, ty: 10 }, { tx: 3, ty: 11 }],
+    playerStart: { tx: 11, ty: 3 },
+    teammates: [{ tx: 10, ty: 3 }, { tx: 12, ty: 3 }],
+    lockedDoors: [{ tx: 11, ty: 7 }, { tx: 11, ty: 23 }],
     suspects: [
-      { tx: 14, ty: 4, armed: true, willSurrender: 0.55, name: 'ARMED SUSPECT', guarding: 0 },
-      { tx: 16, ty: 9, armed: false, willSurrender: 0.95, name: 'ACCOMPLICE' },
+      { tx: 8, ty: 11, armed: true, willSurrender: 0.4, name: 'INTRUDER' },
+      { tx: 15, ty: 12, armed: true, willSurrender: 0.4, name: 'INTRUDER' },
+      {
+        tx: 8, ty: 19, armed: true, willSurrender: 0.15, elite: true, weaponId: 'mp5',
+        name: 'HOME INVASION LEADER', guarding: 0,
+      },
     ],
-    hostages: [{ tx: 15, ty: 3, name: 'SHOP OWNER' }],
-    civilians: [{ tx: 4, ty: 9, wanderRadius: 50 }],
+    hostages: [
+      { tx: 8, ty: 20, name: 'HOMEOWNER' },
+      { tx: 15, ty: 19, name: "HOMEOWNER'S SPOUSE" },
+    ],
+    civilians: [],
+    evidence: [{ tx: 7, ty: 10 }],
+    props: [],
     objectives: [
-      { id: 'neutralize', text: 'Neutralize all suspects' },
-      { id: 'hostage', text: 'Rescue the hostage' },
+      { id: 'neutralize', text: 'Clear the house of armed intruders' },
+      { id: 'hostage', text: 'Rescue the homeowners' },
+      { id: 'evidence', text: 'Secure the stolen property as evidence' },
     ],
-    timeLimit: 300,
-    loadout: { lethal: 'mp5', nonlethal: 'taser' },
-    briefing: `QUICK DEPLOYMENT\n\nDispatch reports an armed robbery in progress at a Riverside pawn shop. At least one suspect is armed and a hostage is being held near the back counter. Move in, neutralize the threat, and bring everyone out alive.\n\nThis is a standalone training deployment and does not affect your Career save.`,
+    timeLimit: 360,
+    loadout: { lethal: 'dmr', nonlethal: 'taser' },
+    briefing: `QUICK DEPLOYMENT — RESIDENTIAL HOME INVASION\n\nDispatch received a silent alarm from a residence on Cedar Lane. Neighbors report armed individuals forcing entry; at least two homeowners are believed held inside.\n\nThe front and back doors are locked — you'll need to kick them in to make entry. Stack up, breach hard, and clear the house room by room. Get the homeowners out alive.\n\nThis is a standalone training deployment and does not affect your Career save.`,
   };
 }
 

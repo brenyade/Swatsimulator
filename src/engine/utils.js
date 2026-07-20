@@ -24,14 +24,21 @@ export function makeRng(seed) {
   };
 }
 
-// Doors never block movement/pathfinding (characters push through as they
-// walk) but DO block vision/bullets while closed — that's their entire
+// Normal doors never block movement/pathfinding (characters push through as
+// they walk) but DO block vision/bullets while closed — that's their entire
 // tactical purpose. Pass forSight:true from LOS/combat code.
+// Locked doors are the exception: they're a real obstacle (movement, sight,
+// bullets — everything) until kicked open via Mission.kickDoor().
 export function isSolidTile(map, tx, ty, { forSight = false } = {}) {
   if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return true;
   const c = map.grid[ty][tx];
   if (c === '#') return true;
-  if (c === 'D' && forSight && !map.openDoors?.has(`${tx},${ty}`)) return true;
+  if (c === 'D') {
+    const key = `${tx},${ty}`;
+    if (map.openDoors?.has(key)) return false;
+    if (map.lockedDoors?.has(key)) return true;
+    return forSight;
+  }
   return false;
 }
 
