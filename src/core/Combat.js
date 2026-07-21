@@ -24,11 +24,11 @@ function marchRay(map, actors, ox, oy, angle, range, ignoreIds) {
 
 // Fires one shot (or a shotgun spread of pellets) from `shooter` toward `angle`.
 // Returns tracer segments [{x0,y0,x1,y1}] for rendering.
-export function fireShot({ shooter, weapon, angle, mission, ignoreIds }) {
+export function fireShot({ shooter, weapon, angle, mission, ignoreIds, spreadMultiplier = 1 }) {
   const pelletCount = weapon.pellets || 1;
   const tracers = [];
   for (let p = 0; p < pelletCount; p++) {
-    const spreadAngle = angle + (Math.random() - 0.5) * weapon.spread * 2;
+    const spreadAngle = angle + (Math.random() - 0.5) * weapon.spread * spreadMultiplier * 2;
     const res = marchRay(mission.map, mission.allActors(), shooter.x, shooter.y, spreadAngle, weapon.range, ignoreIds);
     if (res.hitEntity) {
       if (weapon.stuns) {

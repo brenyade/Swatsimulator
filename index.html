@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SWAT SIMULATOR — Metro City Tactical Operations</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,9 +28,10 @@
         <nav class="menu-buttons">
           <button id="btn-play-now" class="btn btn-primary btn-large">▶ PLAY NOW</button>
           <button id="btn-career" class="btn btn-large">CAREER MODE</button>
-          <button id="btn-armory" class="btn btn-large">ARMORY &amp; LOADOUT</button>
           <button id="btn-custom-map" class="btn btn-large">CUSTOM MAP</button>
+          <button id="btn-armory" class="btn btn-large">ARMORY &amp; LOADOUT</button>
           <button id="btn-options" class="btn btn-large">OPTIONS</button>
+          <button id="btn-menu-fullscreen" class="btn btn-large">ENTER FULLSCREEN</button>
           <button id="btn-credits" class="btn btn-large">CREDITS</button>
         </nav>
         <div class="menu-footer">v1.0 — Single Player Career Build</div>
@@ -67,6 +69,27 @@
       </div>
     </section>
 
+    <!-- ===================== CUSTOM MAP ===================== -->
+    <section id="screen-custom" class="screen">
+      <div class="panel-header">
+        <h2>CUSTOM DEPLOYMENT — Map Upload</h2>
+        <button class="btn btn-back" data-back="menu">← BACK</button>
+      </div>
+      <div class="custom-body">
+        <p class="custom-help">
+          Paste a JSON mission definition below (grid of <code>#</code> walls, <code>.</code> floor,
+          <code>D</code> doors, plus spawn points) or start from the template. Only <code>playerStart</code>
+          and <code>grid</code> are required — everything else is optional.
+        </p>
+        <textarea id="custom-json" class="custom-textarea" spellcheck="false" placeholder="Paste custom map JSON here…"></textarea>
+        <div id="custom-errors" class="custom-errors"></div>
+        <div class="briefing-actions">
+          <button id="btn-custom-template" class="btn btn-large">LOAD TEMPLATE</button>
+          <button id="btn-custom-deploy" class="btn btn-primary btn-large">VALIDATE &amp; DEPLOY ▶</button>
+        </div>
+      </div>
+    </section>
+
     <!-- ===================== ARMORY ===================== -->
     <section id="screen-armory" class="screen">
       <div class="panel-header">
@@ -74,48 +97,6 @@
         <button class="btn btn-back" data-back="menu">← BACK</button>
       </div>
       <div id="armory-body" class="armory-body"></div>
-    </section>
-
-    <!-- ===================== CUSTOM MAP ===================== -->
-    <section id="screen-custom" class="screen">
-      <div class="panel-header">
-        <h2>CUSTOM MAP</h2>
-        <button class="btn btn-back" data-back="menu">← BACK</button>
-      </div>
-      <div class="custom-body">
-        <div class="custom-editor">
-          <div class="custom-toolbar">
-            <label class="btn" for="custom-file-input">UPLOAD .JSON</label>
-            <input type="file" id="custom-file-input" accept=".json,application/json" hidden>
-            <button id="btn-custom-template" class="btn">LOAD TEMPLATE</button>
-            <button id="btn-custom-download" class="btn">DOWNLOAD TEMPLATE</button>
-          </div>
-          <textarea id="custom-json" class="custom-textarea" spellcheck="false" placeholder="Paste your map JSON here, or upload/load a template above."></textarea>
-          <div id="custom-errors" class="custom-errors"></div>
-          <div class="briefing-actions">
-            <span></span>
-            <button id="btn-custom-deploy" class="btn btn-primary btn-large">VALIDATE &amp; DEPLOY ▶</button>
-          </div>
-        </div>
-        <div class="custom-docs">
-          <h4>MAP FORMAT</h4>
-          <p><code>grid</code>: array of equal-length row strings. <code>#</code> wall,
-             <code>.</code> floor, <code>D</code> door.</p>
-          <p><code>playerStart</code>: <code>{tx, ty}</code> tile coords (required).</p>
-          <p>Optional arrays (all entries are <code>{tx, ty, ...}</code>):
-             <code>teammates</code>, <code>suspects</code> (<code>armed</code>,
-             <code>willSurrender</code> 0-1, <code>name</code>, <code>elite</code>,
-             <code>patrol</code>), <code>hostages</code>, <code>civilians</code>
-             (<code>wanderRadius</code>), <code>evidence</code>.</p>
-          <p>Also optional: <code>name</code>, <code>briefing</code>, <code>timeLimit</code>
-             (seconds), <code>loadout</code> <code>{lethal, nonlethal}</code>,
-             <code>objectives</code> (auto-generated if omitted).</p>
-          <p>Every spawn point must sit on a floor tile and be reachable from
-             <code>playerStart</code> — the validator checks both before letting
-             you deploy, and NPCs get the same AI as every built-in mission
-             automatically once the map loads.</p>
-        </div>
-      </div>
     </section>
 
     <!-- ===================== OPTIONS ===================== -->
@@ -145,7 +126,10 @@
         <p><strong>SWAT SIMULATOR</strong></p>
         <p>A single-player tactical law-enforcement simulation.</p>
         <p>Design, Engineering &amp; Direction — Metro City Studios</p>
-        <p>Built entirely with HTML5 Canvas &amp; JavaScript. No external engine or assets required.</p>
+        <p>Built with Three.js, HTML5 and JavaScript.</p>
+        <p>Animated character and prop assets by Kenney, released under CC0.</p>
+        <p>Weapons and doors are procedurally modeled — no external asset files required.</p>
+        <p>Three.js loaders and fflate are used under their MIT licenses.</p>
         <p>Thank you for playing.</p>
       </div>
     </section>
@@ -164,7 +148,10 @@
         <div class="hud-bottom-left">
           <div class="hud-panel hud-vitals">
             <div class="vital-row"><span class="vital-label">HEALTH</span><div class="bar"><div id="hud-health-bar" class="bar-fill health"></div></div></div>
-            <div class="vital-row"><span class="vital-label" id="hud-weapon-name">M9 PISTOL</span><span id="hud-ammo">15 / 45</span></div>
+            <div class="vital-row"><span class="vital-label">ARMOR</span><div class="bar"><div id="hud-armor-bar" class="bar-fill armor"></div></div></div>
+            <div class="vital-row"><span class="vital-label">STAMINA</span><div class="bar"><div id="hud-stamina-bar" class="bar-fill stamina"></div></div></div>
+            <div class="vital-row"><span class="vital-label" id="hud-weapon-name">EAGLE .50 PISTOL</span><span id="hud-ammo">7 / 28</span></div>
+            <div id="hud-status" class="hud-status">STANDING · READY</div>
           </div>
         </div>
         <div class="hud-bottom-right">
@@ -173,16 +160,19 @@
         <div id="hud-command-bar" class="hud-command-bar"></div>
         <div id="hud-banner" class="hud-banner"></div>
         <div id="hud-crosshair">+</div>
+        <div id="hud-context"></div>
         <div id="hud-flash-overlay"></div>
+        <div id="hud-damage-vignette"></div>
       </div>
 
-      <div id="pointer-lock-hint"><span>CLICK TO ENABLE MOUSE LOOK</span></div>
+      <div id="pointer-lock-hint"><span>CLICK TO PLAY<br><small>ALT + ENTER TO TOGGLE FULLSCREEN</small></span></div>
 
       <div id="pause-menu" class="overlay hidden">
         <div class="overlay-box">
           <h2>MISSION PAUSED</h2>
           <button id="btn-resume" class="btn btn-primary btn-large">RESUME</button>
           <button id="btn-restart-mission" class="btn btn-large">RESTART MISSION</button>
+          <button id="btn-pause-fullscreen" class="btn btn-large">ENTER FULLSCREEN</button>
           <button id="btn-controls" class="btn btn-large">CONTROLS</button>
           <button id="btn-quit-mission" class="btn btn-large">QUIT TO MENU</button>
         </div>
@@ -196,16 +186,23 @@
             <li><b>Mouse</b> — Look / turn</li>
             <li><b>WASD</b> — Move (relative to where you're facing)</li>
             <li><b>Left Click</b> — Fire weapon</li>
+            <li><b>Right Click</b> — Aim down sights</li>
+            <li><b>Shift</b> — Sprint (uses stamina)</li>
             <li><b>R</b> — Reload</li>
-            <li><b>Q</b> — Switch lethal / less-lethal</li>
-            <li><b>F</b> — Throw flashbang (or breach nearest door)</li>
-            <li><b>E</b> — Interact (cuff suspect / free hostage / open door / kick locked door)</li>
+            <li><b>Q / E</b> — Lean left / right</li>
+            <li><b>Ctrl</b> — Crouch</li>
+            <li><b>X</b> — Switch lethal / less-lethal</li>
+            <li><b>B</b> — Kick / breach nearest door</li>
+            <li><b>G</b> — Throw flashbang</li>
+            <li><b>F</b> — Interact (cuff / rescue / evidence / door)</li>
             <li><b>1</b> — Team: Follow me</li>
             <li><b>2</b> — Team: Hold position</li>
             <li><b>3</b> — Team: Move to marker (ahead of you)</li>
             <li><b>4</b> — Team: Breach nearest door &amp; clear</li>
+            <li><b>5</b> — Team: Autonomous — independently clear rooms and engage</li>
             <li><b>Space</b> — Order suspects to surrender ("Freeze! SWAT!")</li>
             <li><b>Esc</b> — Pause</li>
+            <li><b>Alt + Enter</b> — Toggle fullscreen</li>
           </ul>
           <button id="btn-close-controls" class="btn btn-primary">CLOSE</button>
         </div>
@@ -229,6 +226,13 @@
 
   </div>
 
+  <script type="importmap">
+{
+  "imports": {
+    "three": "./src/vendor/three.module.js"
+  }
+}
+</script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -10,6 +10,8 @@ export class ScoreManager {
     this.teammatesLost = 0;
     this.teammatesInjured = 0;
     this.excessiveForce = false;
+    this.forceViolations = 0;
+    this._violationTargets = new Set();
     this.timeElapsed = 0;
   }
 
@@ -31,6 +33,15 @@ export class ScoreManager {
   recordCivilianCasualty() { this.civilianCasualties++; }
   recordTeammateLost() { this.teammatesLost++; }
 
+  recordForceViolation(target) {
+    const key = target?.id ?? `unknown-${this.forceViolations}`;
+    if (this._violationTargets.has(key)) return false;
+    this._violationTargets.add(key);
+    this.forceViolations++;
+    this.excessiveForce = true;
+    return true;
+  }
+
   finalize(teammates, targetTime) {
     this.teammatesInjured = teammates.filter(t => t.alive && t.hp < t.maxHp * 0.6).length;
 
@@ -44,6 +55,7 @@ export class ScoreManager {
     score -= this.civilianCasualties * 20;
     score -= this.teammatesLost * 20;
     score -= this.teammatesInjured * 5;
+    score -= this.forceViolations * 12;
     if (targetTime && this.timeElapsed < targetTime) {
       score += Math.round(10 * (1 - this.timeElapsed / targetTime));
     }

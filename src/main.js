@@ -11,6 +11,7 @@ import { buildCustomMission, CUSTOM_MAP_TEMPLATE } from './maps/customMap.js';
 const career = new CareerManager();
 const canvas = document.getElementById('game-canvas');
 const runner = new GameRunner(canvas);
+const app = document.getElementById('app');
 
 let currentMissionDef = null;
 let currentCareerIndex = null; // null => quick play / non-career
@@ -37,10 +38,40 @@ document.getElementById('btn-play-now').addEventListener('click', () => {
   openBriefing();
 });
 document.getElementById('btn-career').addEventListener('click', () => { resumeAudio(); playUiClick(); renderCareerScreen(); showScreen('career'); });
-document.getElementById('btn-armory').addEventListener('click', () => { playUiClick(); renderArmory(); showScreen('armory'); });
 document.getElementById('btn-custom-map').addEventListener('click', () => { playUiClick(); showScreen('custom'); });
+document.getElementById('btn-armory').addEventListener('click', () => { playUiClick(); renderArmory(); showScreen('armory'); });
 document.getElementById('btn-options').addEventListener('click', () => { playUiClick(); showScreen('options'); });
 document.getElementById('btn-credits').addEventListener('click', () => { playUiClick(); showScreen('credits'); });
+
+const fullscreenButtons = [
+  document.getElementById('btn-menu-fullscreen'),
+  document.getElementById('btn-pause-fullscreen'),
+];
+
+function refreshFullscreenButtons() {
+  const label = document.fullscreenElement ? 'EXIT FULLSCREEN' : 'ENTER FULLSCREEN';
+  fullscreenButtons.forEach((button) => { button.textContent = label; });
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await app.requestFullscreen({ navigationUI: 'hide' });
+  } catch (error) {
+    console.warn('Fullscreen request was declined', error);
+  }
+}
+
+fullscreenButtons.forEach((button) => button.addEventListener('click', () => {
+  playUiClick();
+  toggleFullscreen();
+}));
+
+document.addEventListener('fullscreenchange', () => {
+  refreshFullscreenButtons();
+  requestAnimationFrame(() => runner.resize(true));
+});
+refreshFullscreenButtons();
 
 // ---------------------------------------------------------------- career screen
 function grade_(missionIndex) {
@@ -121,6 +152,11 @@ const pauseMenu = document.getElementById('pause-menu');
 const controlsOverlay = document.getElementById('controls-overlay');
 
 window.addEventListener('keydown', (e) => {
+  if (e.altKey && e.key === 'Enter') {
+    e.preventDefault();
+    toggleFullscreen();
+    return;
+  }
   if (e.key === 'Escape' && document.getElementById('screen-game').classList.contains('active')) {
     if (!controlsOverlay.classList.contains('hidden')) { controlsOverlay.classList.add('hidden'); return; }
     const willPause = pauseMenu.classList.contains('hidden');
@@ -177,6 +213,7 @@ function showDebrief(mission, result, passed) {
     statRow('Suspects Arrested', s.suspectsArrested),
     statRow('Suspects Neutralized (Justified)', s.suspectsKilledJustified),
     statRow('Excessive Force Incidents', s.suspectsKilledExcessive, s.suspectsKilledExcessive > 0),
+    statRow('ROE Violations', s.forceViolations, s.forceViolations > 0),
     statRow('Suspects Escaped', s.suspectsEscaped, s.suspectsEscaped > 0),
     statRow('Hostages Rescued', s.hostagesFreed),
     statRow('Hostages Lost', s.hostagesDied, s.hostagesDied > 0),
@@ -225,6 +262,36 @@ function showDebrief(mission, result, passed) {
   showScreen('debrief');
 }
 
+// ---------------------------------------------------------------- custom map
+const customJsonEl = document.getElementById('custom-json');
+const customErrorsEl = document.getElementById('custom-errors');
+
+document.getElementById('btn-custom-template').addEventListener('click', () => {
+  playUiClick();
+  customJsonEl.value = JSON.stringify(CUSTOM_MAP_TEMPLATE, null, 2);
+  customErrorsEl.textContent = '';
+});
+
+document.getElementById('btn-custom-deploy').addEventListener('click', () => {
+  playUiClick();
+  customErrorsEl.textContent = '';
+  let raw;
+  try {
+    raw = JSON.parse(customJsonEl.value);
+  } catch (err) {
+    customErrorsEl.textContent = `Invalid JSON: ${err.message}`;
+    return;
+  }
+  const result = buildCustomMission(raw);
+  if (!result.ok) {
+    customErrorsEl.textContent = result.errors.join('\n');
+    return;
+  }
+  currentMissionDef = result.mission;
+  currentCareerIndex = null;
+  openBriefing();
+});
+
 // ---------------------------------------------------------------- armory
 function renderArmory() {
   const body = document.getElementById('armory-body');
@@ -246,60 +313,11 @@ function renderArmory() {
   cards.push(`
     <div class="armory-item">
       <h4>DYNAMIC ENTRY</h4>
-      <p>${EQUIPMENT.breach.desc} Approach a closed door and press F to breach with a flashbang, or send a teammate in with the Breach command.</p>
+      <p>${EQUIPMENT.breach.desc} Approach a closed door and press F to kick it in yourself, or send a teammate in with the Breach command.</p>
       <span class="tag">TACTIC</span>
     </div>`);
   body.innerHTML = cards.join('');
 }
-
-// ---------------------------------------------------------------- custom map
-const customTextarea = document.getElementById('custom-json');
-const customErrors = document.getElementById('custom-errors');
-
-document.getElementById('custom-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  customTextarea.value = await file.text();
-  customErrors.innerHTML = '';
-  e.target.value = '';
-});
-
-document.getElementById('btn-custom-template').addEventListener('click', () => {
-  playUiClick();
-  customTextarea.value = JSON.stringify(CUSTOM_MAP_TEMPLATE, null, 2);
-  customErrors.innerHTML = '';
-});
-
-document.getElementById('btn-custom-download').addEventListener('click', () => {
-  playUiClick();
-  const blob = new Blob([JSON.stringify(CUSTOM_MAP_TEMPLATE, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'swat-simulator-map-template.json';
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-document.getElementById('btn-custom-deploy').addEventListener('click', () => {
-  playUiClick();
-  let parsed;
-  try {
-    parsed = JSON.parse(customTextarea.value);
-  } catch (err) {
-    customErrors.innerHTML = `<div class="err-item">Invalid JSON: ${err.message}</div>`;
-    return;
-  }
-  const result = buildCustomMission(parsed);
-  if (!result.ok) {
-    customErrors.innerHTML = result.errors.map((e) => `<div class="err-item">${e}</div>`).join('');
-    return;
-  }
-  customErrors.innerHTML = `<div class="err-ok">Map valid — deploying "${result.mission.name}"…</div>`;
-  resumeAudio();
-  currentMissionDef = result.mission;
-  currentCareerIndex = null;
-  openBriefing();
-});
 
 // ---------------------------------------------------------------- options
 const volSlider = document.getElementById('opt-volume');

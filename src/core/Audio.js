@@ -65,11 +65,6 @@ export function playFlashbang() {
   tone({ freq: 2200, type: 'sine', duration: 0.5, gain: 0.2 });
 }
 
-export function playKick() {
-  noiseBurst({ duration: 0.18, gain: 0.5 });
-  tone({ freq: 90, type: 'square', duration: 0.22, gain: 0.35, sweepTo: 45 });
-}
-
 export function playAlert() { tone({ freq: 520, type: 'sawtooth', duration: 0.18, gain: 0.2, sweepTo: 720 }); }
 export function playArrest() { tone({ freq: 660, type: 'triangle', duration: 0.2, gain: 0.25, sweepTo: 990 }); }
 export function playHurt() { tone({ freq: 180, type: 'square', duration: 0.15, gain: 0.25, sweepTo: 90 }); }

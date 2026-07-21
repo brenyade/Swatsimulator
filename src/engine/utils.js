@@ -24,21 +24,14 @@ export function makeRng(seed) {
   };
 }
 
-// Normal doors never block movement/pathfinding (characters push through as
-// they walk) but DO block vision/bullets while closed — that's their entire
-// tactical purpose. Pass forSight:true from LOS/combat code.
-// Locked doors are the exception: they're a real obstacle (movement, sight,
-// bullets — everything) until kicked open via Mission.kickDoor().
-export function isSolidTile(map, tx, ty, { forSight = false } = {}) {
+// Closed doors block bodies, vision and bullets. Pathfinding intentionally
+// treats them as traversable so AI can plan to a doorway, open it on approach,
+// then continue on the same route once the leaf has cleared.
+export function isSolidTile(map, tx, ty, { forSight = false, forMovement = false } = {}) {
   if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return true;
   const c = map.grid[ty][tx];
   if (c === '#') return true;
-  if (c === 'D') {
-    const key = `${tx},${ty}`;
-    if (map.openDoors?.has(key)) return false;
-    if (map.lockedDoors?.has(key)) return true;
-    return forSight;
-  }
+  if (c === 'D' && (forSight || forMovement) && !map.openDoors?.has(`${tx},${ty}`)) return true;
   return false;
 }
 
@@ -63,6 +56,44 @@ export function hasLineOfSight(map, x0, y0, x1, y1) {
   return true;
 }
 
+// Binary min-heap keyed by `.f`, so the A* open list doesn't need a full
+// re-sort on every iteration (that was O(n log n) per pop; this is O(log n)).
+class MinHeap {
+  constructor() { this.items = []; }
+  get size() { return this.items.length; }
+  push(item) {
+    const items = this.items;
+    items.push(item);
+    let i = items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (items[parent].f <= items[i].f) break;
+      [items[parent], items[i]] = [items[i], items[parent]];
+      i = parent;
+    }
+  }
+  pop() {
+    const items = this.items;
+    const top = items[0];
+    const last = items.pop();
+    if (items.length > 0) {
+      items[0] = last;
+      let i = 0;
+      const n = items.length;
+      for (;;) {
+        const l = i * 2 + 1, r = i * 2 + 2;
+        let smallest = i;
+        if (l < n && items[l].f < items[smallest].f) smallest = l;
+        if (r < n && items[r].f < items[smallest].f) smallest = r;
+        if (smallest === i) break;
+        [items[smallest], items[i]] = [items[i], items[smallest]];
+        i = smallest;
+      }
+    }
+    return top;
+  }
+}
+
 // --- A* pathfinding over the tile grid, returns array of {x,y} world-space waypoints ---
 export function findPath(map, startX, startY, goalX, goalY) {
   const start = worldToTile(startX, startY);
@@ -71,7 +102,8 @@ export function findPath(map, startX, startY, goalX, goalY) {
 
   const key = (x, y) => `${x},${y}`;
   const open = new Map();
-  const openList = [{ x: start.tx, y: start.ty, g: 0, f: 0 }];
+  const openList = new MinHeap();
+  openList.push({ x: start.tx, y: start.ty, g: 0, f: 0 });
   open.set(key(start.tx, start.ty), true);
   const cameFrom = new Map();
   const gScore = new Map([[key(start.tx, start.ty), 0]]);
@@ -80,10 +112,10 @@ export function findPath(map, startX, startY, goalX, goalY) {
   const heuristic = (x, y) => Math.abs(x - goal.tx) + Math.abs(y - goal.ty);
   let iterations = 0;
 
-  while (openList.length > 0 && iterations++ < 3000) {
-    openList.sort((a, b) => a.f - b.f);
-    const current = openList.shift();
+  while (openList.size > 0 && iterations++ < 3000) {
+    const current = openList.pop();
     const ck = key(current.x, current.y);
+    if (closed.has(ck)) continue; // stale duplicate entry, already finalized
     open.delete(ck);
     if (current.x === goal.tx && current.y === goal.ty) {
       const path = [];

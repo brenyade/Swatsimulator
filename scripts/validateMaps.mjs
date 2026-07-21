@@ -45,6 +45,39 @@ function checkMission(m) {
   (m.evidence || []).forEach((e, i) => check(`evidence${i}`, e.tx, e.ty));
   m.suspects.forEach((s, i) => (s.patrol || []).forEach((p, j) => check(`suspect${i} patrol${j}`, p.tx, p.ty)));
 
+  for (let ty = 0; ty < height; ty++) {
+    for (let tx = 0; tx < width; tx++) {
+      if (grid[ty][tx] !== 'D') continue;
+      const horizontalSupports = Number(grid[ty]?.[tx - 1] === '#') + Number(grid[ty]?.[tx + 1] === '#');
+      const verticalSupports = Number(grid[ty - 1]?.[tx] === '#') + Number(grid[ty + 1]?.[tx] === '#');
+      if (horizontalSupports === 0 && verticalSupports === 0) {
+        console.log(`FAIL: door at (${tx},${ty}) has no supporting wall`); failures++;
+        continue;
+      }
+      const horizontal = horizontalSupports >= verticalSupports;
+      const passages = horizontal
+        ? [[tx, ty - 1], [tx, ty + 1]]
+        : [[tx - 1, ty], [tx + 1, ty]];
+      if (passages.some(([x, y]) => grid[y]?.[x] === '#')) {
+        console.log(`FAIL: door at (${tx},${ty}) opens into a wall`); failures++;
+      }
+    }
+  }
+
+  for (const [i, prop] of (m.props || []).entries()) {
+    const x0 = prop.x0 ?? prop.tx, y0 = prop.y0 ?? prop.ty;
+    const x1 = prop.x1 ?? prop.tx, y1 = prop.y1 ?? prop.ty;
+    if ([x0, y0, x1, y1].some((v) => !Number.isInteger(v)) || x0 < 0 || y0 < 0 || x1 >= width || y1 >= height) {
+      console.log(`FAIL: prop${i} (${prop.type}) has an invalid footprint`); failures++;
+      continue;
+    }
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (grid[y][x] !== '#') { console.log(`FAIL: prop${i} (${prop.type}) is missing collision at (${x},${y})`); failures++; }
+      }
+    }
+  }
+
   const reachable = floodFill(grid, width, height, m.playerStart.tx, m.playerStart.ty);
   const checkReach = (label, tx, ty) => {
     if (!reachable.has(`${tx},${ty}`)) { console.log(`FAIL: ${label} NOT REACHABLE from player start`); failures++; }

@@ -4,6 +4,8 @@ export class Input {
     this.keys = new Set();
     this.pressed = new Set(); // edge-triggered, cleared once consumed each frame
     this.mouseDown = false;
+    this.mousePressed = false;
+    this.aimDown = false;
     this.pointerLocked = false;
     this.yawDelta = 0;
     this.pitchDelta = 0;
@@ -22,16 +24,25 @@ export class Input {
     window.addEventListener('keyup', (e) => { this.keys.delete(e.key.toLowerCase()); });
 
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
       if (!this.pointerLocked) { canvas.requestPointerLock(); return; }
-      this.mouseDown = true;
+      if (e.button === 0) {
+        if (!this.mouseDown) this.mousePressed = true;
+        this.mouseDown = true;
+      }
+      if (e.button === 2) this.aimDown = true;
     });
-    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseDown = false; });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseDown = false;
+      if (e.button === 2) this.aimDown = false;
+    });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === canvas;
-      if (!this.pointerLocked) this.mouseDown = false;
+      if (!this.pointerLocked) {
+        this.mouseDown = false;
+        this.aimDown = false;
+      }
     });
     document.addEventListener('mousemove', (e) => {
       if (!this.pointerLocked) return;
@@ -52,5 +63,8 @@ export class Input {
 
   wasPressed(key) { return this.pressed.has(key); }
 
-  clearFrame() { this.pressed.clear(); }
+  clearFrame() {
+    this.pressed.clear();
+    this.mousePressed = false;
+  }
 }

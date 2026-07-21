@@ -6,6 +6,9 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "validate-maps": "node scripts/validateMaps.mjs"
+    "validate-maps": "node scripts/validateMaps.mjs",
+    "validate-runner": "node scripts/validateGameRunner.mjs",
+    "validate-gameplay": "node scripts/validateGameplay.mjs",
+    "test": "npm run validate-maps && npm run validate-runner && npm run validate-gameplay"
   }
 }

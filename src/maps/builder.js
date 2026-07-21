@@ -18,6 +18,13 @@ export function hall(grid, x0, y0, x1, y1) { room(grid, x0, y0, x1, y1, '.'); }
 
 export function door(grid, x, y) { grid[y][x] = 'D'; }
 
+// Reserves a rectangular collision footprint while preserving what the
+// obstacle actually represents for the 3D renderer (shelf, desk, sofa, etc.).
+export function blockingProp(grid, x0, y0, x1, y1, type, options = {}) {
+  room(grid, x0, y0, x1, y1, '#');
+  return { type, x0, y0, x1, y1, ...options };
+}
+
 // All tile coordinates within a rectangle — handy for turning an obstacle
 // rect into a list of decorative prop positions (one per tile).
 export function rectTiles(x0, y0, x1, y1) {

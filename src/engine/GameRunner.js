@@ -1,9 +1,10 @@
 import { Mission } from './Mission.js';
 import { Input } from './Input.js';
 import { Renderer3D } from './Renderer3D.js';
+import { AnimationLoop } from './AnimationLoop.js';
 import { updateHUD, initCommandBar } from './HUD.js';
 import {
-  commandFollow, commandHold, commandMoveTo, commandBreach, orderSurrender, contextInteract, findNearestDoor,
+  commandFollow, commandHold, commandMoveTo, commandBreach, commandAutonomous, orderSurrender, contextInteract, findNearestDoor,
 } from '../core/CommandSystem.js';
 
 const MAX_DT = 1 / 20;
@@ -20,24 +21,37 @@ export class GameRunner {
     this.marker = null;
     this.markerTimer = 0;
     this._onFrame = this._onFrame.bind(this);
+    this._animationLoop = new AnimationLoop(this._onFrame);
 
     this.hint = document.getElementById('pointer-lock-hint');
     this.hint.addEventListener('click', () => this.input.requestLock());
+    window.addEventListener('resize', () => this.resize());
   }
 
   start(missionDef, callbacks) {
-    this.mission = new Mission(missionDef);
-    this.renderer3d.buildScene(this.mission);
+    const mission = new Mission(missionDef);
+    this.renderer3d.buildScene(mission);
+    this.resize(true);
+
+    this.mission = mission;
     this.callbacks = callbacks || {};
     this.running = true;
     this.paused = false;
     this.marker = null;
     this._lastT = performance.now();
     initCommandBar();
-    requestAnimationFrame(this._onFrame);
+    this._animationLoop.start();
   }
 
-  stop() { this.running = false; this.input.exitLock(); }
+  stop() {
+    this.running = false;
+    this._animationLoop.stop();
+    this.input.exitLock();
+  }
+
+  resize(force = false) {
+    return this.renderer3d.resizeToDisplaySize(force);
+  }
 
   setPaused(v) {
     this.paused = v;
@@ -57,25 +71,23 @@ export class GameRunner {
       this.markerTimer = 2.5;
     }
     if (input.wasPressed('4')) commandBreach(mission);
+    if (input.wasPressed('5')) commandAutonomous(mission);
     if (input.wasPressed(' ')) orderSurrender(mission);
-    if (input.wasPressed('e')) {
+    if (input.wasPressed('f')) {
       contextInteract(mission);
       mission.secureEvidenceNear(mission.player.x, mission.player.y);
     }
-    if (input.wasPressed('q')) mission.player.switchSlot();
+    if (input.wasPressed('x')) mission.player.switchSlot();
     if (input.wasPressed('r')) mission.player.reload();
-    if (input.wasPressed('f')) {
+    if (input.wasPressed('b')) {
       const door = findNearestDoor(mission, mission.player.x, mission.player.y, 55);
       if (door && !mission.map.openDoors.has(`${door.tx},${door.ty}`)) {
-        if (mission.isDoorLocked(door.tx, door.ty)) mission.kickDoor(door.tx, door.ty);
-        else mission.openDoor(door.tx, door.ty);
-        const angle = Math.atan2(door.worldY - mission.player.y, door.worldX - mission.player.x);
-        mission.spawnFlashbang(mission.player.x, mission.player.y, angle, true);
-        mission.banner('DYNAMIC ENTRY');
-      } else {
-        mission.player.throwFlashbang(mission);
+        mission.openDoor(door.tx, door.ty, 'breach');
+        mission.markLoudEvent(door.worldX, door.worldY);
+        mission.banner('DOOR KICKED IN');
       }
     }
+    if (input.wasPressed('g')) mission.player.throwFlashbang(mission);
   }
 
   _onFrame(t) {
@@ -104,6 +116,6 @@ export class GameRunner {
     this.renderer3d.update(this.mission, this.paused ? 0 : dt, this.marker);
     this.renderer3d.render();
     updateHUD(this.mission, this.input);
-    requestAnimationFrame(this._onFrame);
+    this._animationLoop.schedule();
   }
 }

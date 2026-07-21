@@ -6,29 +6,47 @@ import { Civilian } from '../entities/Civilian.js';
 import { ScoreManager } from '../core/ScoreManager.js';
 import { tile } from '../maps/builder.js';
 import { dist } from './utils.js';
-import { playFlashbang, playHurt, playKick } from '../core/Audio.js';
+import { playFlashbang, playHurt } from '../core/Audio.js';
 
 const TEAM_NAMES = ['ALPHA', 'BRAVO'];
+const MAX_BLOOD_POOLS = 48;
 
 export class Mission {
   constructor(def) {
     this.def = def;
-    this.lockedDoorKeys = new Set((def.lockedDoors || []).map((d) => `${d.tx},${d.ty}`));
     this.map = {
-      width: def.width, height: def.height, grid: def.grid, openDoors: new Set(), lockedDoors: this.lockedDoorKeys,
+      width: def.width,
+      height: def.height,
+      grid: def.grid,
+      openDoors: new Set(),
+      openingDoors: new Map(),
+      doorModes: new Map(),
     };
     this.doorTiles = [];
     for (let y = 0; y < def.height; y++) {
       for (let x = 0; x < def.width; x++) {
         if (def.grid[y][x] === 'D') {
-          const locked = this.lockedDoorKeys.has(`${x},${y}`);
-          this.doorTiles.push({ tx: x, ty: y, wx: x * 32 + 16, wy: y * 32 + 16, locked });
+          const horizontalSupports = Number(def.grid[y]?.[x - 1] === '#') + Number(def.grid[y]?.[x + 1] === '#');
+          const verticalSupports = Number(def.grid[y - 1]?.[x] === '#') + Number(def.grid[y + 1]?.[x] === '#');
+          this.doorTiles.push({
+            tx: x, ty: y, wx: x * 32 + 16, wy: y * 32 + 16,
+            axis: horizontalSupports >= verticalSupports ? 'x' : 'y',
+          });
         }
       }
     }
 
+    this._buildRooms(def);
+
     const p0 = tile(def.playerStart.tx, def.playerStart.ty);
     this.player = new Player(p0.x, p0.y, def.loadout);
+    const nearestEntry = this.doorTiles.reduce((best, doorTile) => {
+      const d = dist(p0.x, p0.y, doorTile.wx, doorTile.wy);
+      return !best || d < best.distance ? { doorTile, distance: d } : best;
+    }, null);
+    this.player.facing = Number.isFinite(def.playerStart.facing)
+      ? def.playerStart.facing
+      : nearestEntry ? Math.atan2(nearestEntry.doorTile.wy - p0.y, nearestEntry.doorTile.wx - p0.x) : 0;
 
     this.teammates = def.teammates.map((t, i) => {
       const w = tile(t.tx, t.ty);
@@ -57,12 +75,25 @@ export class Mission {
     });
 
     this.evidencePoints = (def.evidence || []).map((e) => ({ ...tile(e.tx, e.ty), tx: e.tx, ty: e.ty, collected: false }));
-    this.propPoints = (def.props || []).map((p) => ({ ...tile(p.tx, p.ty), tx: p.tx, ty: p.ty, type: p.type }));
+    this.propPoints = (def.props || []).map((p) => {
+      const x0 = p.x0 ?? p.tx;
+      const y0 = p.y0 ?? p.ty;
+      const x1 = p.x1 ?? p.tx;
+      const y1 = p.y1 ?? p.ty;
+      return {
+        ...p,
+        x0, y0, x1, y1,
+        x: (x0 + x1 + 1) * 16,
+        y: (y0 + y1 + 1) * 16,
+      };
+    });
 
     this.tracers = [];
     this.effects = [];
+    this.bloodPools = [];
     this.score = new ScoreManager();
     this.timeRemaining = def.timeLimit;
+    this.overtime = false;
     this.elapsed = 0;
     this.state = 'running';
     this.bannerText = '';
@@ -75,6 +106,60 @@ export class Mission {
     this.offsetY = Math.max(10, Math.round((CANVAS_H - def.height * 32) / 2));
   }
 
+  // Segments the floor into rooms bounded by walls and doors (a closed
+  // doorway separates two rooms), so autonomous teammates can prioritize
+  // clearing space they haven't checked yet instead of wandering at random.
+  _buildRooms(def) {
+    this.rooms = [];
+    this.roomIndex = new Map();
+    this.visitedRooms = new Set();
+    const seen = new Set();
+    for (let y = 0; y < def.height; y++) {
+      for (let x = 0; x < def.width; x++) {
+        const key = `${x},${y}`;
+        if (seen.has(key) || def.grid[y][x] !== '.') continue;
+        const roomId = this.rooms.length;
+        const tiles = [];
+        const stack = [[x, y]];
+        seen.add(key);
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          tiles.push({ tx: cx, ty: cy });
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= def.width || ny >= def.height) continue;
+            const nKey = `${nx},${ny}`;
+            if (seen.has(nKey) || def.grid[ny][nx] !== '.') continue;
+            seen.add(nKey);
+            stack.push([nx, ny]);
+          }
+        }
+        let sx = 0, sy = 0;
+        for (const t of tiles) { sx += t.tx; sy += t.ty; this.roomIndex.set(`${t.tx},${t.ty}`, roomId); }
+        const avgTx = sx / tiles.length, avgTy = sy / tiles.length;
+        // The centroid of an L-shaped or irregular room can land outside the
+        // room entirely (inside a wall); snap to the closest tile that is
+        // actually part of the room so it's always a reachable nav target.
+        let center = tiles[0], centerD = Infinity;
+        for (const t of tiles) {
+          const d = (t.tx - avgTx) ** 2 + (t.ty - avgTy) ** 2;
+          if (d < centerD) { centerD = d; center = t; }
+        }
+        this.rooms.push({
+          id: roomId,
+          tiles,
+          cx: center.tx * 32 + 16,
+          cy: center.ty * 32 + 16,
+        });
+      }
+    }
+  }
+
+  roomIdAt(x, y) {
+    const id = this.roomIndex.get(`${Math.floor(x / 32)},${Math.floor(y / 32)}`);
+    return id === undefined ? null : id;
+  }
+
   allActors() {
     return [this.player, ...this.teammates, ...this.suspects, ...this.hostages, ...this.civilians].filter((a) => a.alive);
   }
@@ -83,34 +168,56 @@ export class Mission {
 
   addTracers(list) { for (const t of list) this.tracers.push({ ...t, age: 0 }); }
 
-  openDoor(tx, ty) { this.map.openDoors.add(`${tx},${ty}`); }
-
-  isDoorLocked(tx, ty) {
+  openDoor(tx, ty, mode = 'normal') {
     const key = `${tx},${ty}`;
-    return this.lockedDoorKeys.has(key) && !this.map.openDoors.has(key);
+    if (this.map.openDoors.has(key) || this.map.openingDoors.has(key)) return;
+    this.map.openingDoors.set(key, 0);
+    this.map.doorModes.set(key, mode);
   }
 
-  // A locked door won't budge until the player forces it — bypasses the
-  // normal walk-up-and-it-opens convention for a dramatic breach moment.
-  kickDoor(tx, ty) {
-    if (!this.isDoorLocked(tx, ty)) return false;
-    this.openDoor(tx, ty);
-    this.markLoudEvent(tx * 32 + 16, ty * 32 + 16);
-    this.player.recoil = Math.min(1.6, this.player.recoil + 1.3);
-    playKick();
-    this.banner('DOOR BREACHED');
-    return true;
+  updateDoorOpenings(dt) {
+    for (const [key, elapsed] of this.map.openingDoors) {
+      const next = elapsed + dt;
+      const mode = this.map.doorModes.get(key);
+      const clearanceDelay = mode === 'breach' ? 0.09 : 0.18;
+      if (next >= clearanceDelay) {
+        this.map.openingDoors.delete(key);
+        this.map.openDoors.add(key);
+      } else {
+        this.map.openingDoors.set(key, next);
+      }
+    }
   }
 
   markLoudEvent(x, y) { this.lastLoudEventPos = { x, y }; this.lastLoudEventAge = 0; }
 
   onPlayerFired() { this.markLoudEvent(this.player.x, this.player.y); }
 
+  spawnBloodImpact(x, y) {
+    this.effects.push({ type: 'blood-burst', x, y, age: 0, duration: 0.4 });
+  }
+
+  spawnBloodPool(x, y) {
+    this.bloodPools.push({ x, y, seed: Math.random() });
+    if (this.bloodPools.length > MAX_BLOOD_POOLS) this.bloodPools.shift();
+  }
+
   onHit(shooter, target, dmg) {
     this.markLoudEvent(target.x, target.y);
-    if (target.team === 'player') playHurt();
+    if (target.team === 'player') { playHurt(); this.player.registerHit?.(dmg); }
+    this.spawnBloodImpact(target.x, target.y);
+    if (shooter.team === 'player') {
+      const suspectState = target.stateAtDeath || target.state;
+      const unlawful = target.team === 'civilian'
+        || target.team === 'hostage'
+        || target.team === 'teammate'
+        || (target.team === 'suspect' && suspectState !== 'hostile');
+      if (unlawful && this.score.recordForceViolation(target)) this.banner('ROE VIOLATION — UNAUTHORIZED FORCE');
+    }
+    if (target.team === 'suspect') target.applyPressure?.(0.12 + Math.min(0.2, dmg / 120));
     if (target.alive || target._deathProcessed) return;
     target._deathProcessed = true;
+    this.spawnBloodPool(target.x, target.y);
     if (target.team === 'civilian') this.score.recordCivilianCasualty();
     else if (target.team === 'hostage') this.score.recordHostageDied();
     else if (target.team === 'suspect') this.score.recordSuspectDeath(target);
@@ -119,6 +226,7 @@ export class Mission {
 
   onNonLethalHit(shooter, target) {
     this.markLoudEvent(target.x, target.y);
+    if (target.team === 'suspect') target.applyPressure?.(0.42);
   }
 
   onHostageFreed() { this.score.recordHostageFreed(); this.banner('HOSTAGE RESCUED'); }
@@ -146,6 +254,7 @@ export class Mission {
       if (dist(a.x, a.y, x, y) > RADIUS) continue;
       if (a.team === 'suspect' || a.team === 'civilian' || a.team === 'teammate' || a.team === 'player') {
         a.stun?.(a.team === 'suspect' ? 4.5 : 1.5);
+        if (a.team === 'suspect') a.applyPressure?.(0.55);
       }
     }
   }
@@ -174,12 +283,20 @@ export class Mission {
     this.lastLoudEventAge += dt;
     if (this.bannerTimer > 0) this.bannerTimer -= dt;
 
-    // doors open automatically once someone actually walks up to them —
-    // except locked doors, which only open via kickDoor()
-    for (const d of this.doorTiles) {
-      if (d.locked || this.map.openDoors.has(`${d.tx},${d.ty}`)) continue;
-      for (const a of this.allActors()) {
-        if (dist(a.x, a.y, d.wx, d.wy) < 20) { this.map.openDoors.add(`${d.tx},${d.ty}`); break; }
+    this.updateDoorOpenings(dt);
+
+    // AI can still move through closed doors when they reach them, but the
+    // player must explicitly open or kick doors for dynamic entry to matter.
+    if (this.doorTiles.length) {
+      const nonPlayerActors = [...this.teammates, ...this.suspects, ...this.hostages, ...this.civilians]
+        .filter((actor) => actor.alive);
+      for (const d of this.doorTiles) {
+        const key = `${d.tx},${d.ty}`;
+        if (this.map.openDoors.has(key) || this.map.openingDoors.has(key)) continue;
+        for (const a of nonPlayerActors) {
+          if (a.team === 'teammate' && ['stack', 'breach', 'entry'].includes(a.order)) continue;
+          if (dist(a.x, a.y, d.wx, d.wy) < 30) { this.openDoor(d.tx, d.ty); break; }
+        }
       }
     }
 
@@ -188,6 +305,16 @@ export class Mission {
     for (const s of this.suspects) s.update(dt, this);
     for (const h of this.hostages) h.update(dt, this);
     for (const c of this.civilians) c.update(dt, this);
+
+    if (this.player.alive) {
+      const pr = this.roomIdAt(this.player.x, this.player.y);
+      if (pr !== null) this.visitedRooms.add(pr);
+    }
+    for (const t of this.teammates) {
+      if (!t.alive) continue;
+      const r = this.roomIdAt(t.x, t.y);
+      if (r !== null) this.visitedRooms.add(r);
+    }
 
     for (const fx of this.effects) {
       fx.age += dt;
@@ -203,7 +330,12 @@ export class Mission {
     this.score.timeElapsed = this.elapsed;
 
     if (!this.player.alive) { this.state = 'lost_dead'; return; }
-    if (this.timeRemaining <= 0) { this.state = 'lost_time'; return; }
-    if (this.allSuspectsResolved && this.allEvidenceCollected) { this.state = 'won'; return; }
+    if (this.timeRemaining <= 0 && !this.overtime) {
+      this.overtime = true;
+      this.banner('COMMAND: OVERTIME — COMPLETE THE CLEAR');
+    }
+    if (this.allSuspectsResolved && this.allEvidenceCollected && this.allHostagesResolved) {
+      this.state = 'won';
+    }
   }
 }

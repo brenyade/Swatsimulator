@@ -15,6 +15,7 @@ export class Hostage extends Entity {
 
   update(dt, mission) {
     if (!this.alive) return;
+    if (this.tickStun(dt)) return;
     if (this.state === 'freed' && this.fleeTarget) {
       this.navigateTo(dt, mission.map, this.fleeTarget.x, this.fleeTarget.y, 0.7);
     }

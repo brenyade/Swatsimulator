@@ -32,6 +32,12 @@ export class Entity {
     this.stunTimer = Math.max(this.stunTimer, seconds);
   }
 
+  tickStun(dt) {
+    if (this.stunTimer <= 0) return false;
+    this.stunTimer = Math.max(0, this.stunTimer - dt);
+    return true;
+  }
+
   moveToward(tx, ty, dt, map, speedMul = 1) {
     const dx = tx - this.x, dy = ty - this.y;
     const d = Math.hypot(dx, dy);
@@ -47,7 +53,7 @@ export class Entity {
     const pts = [[x - r, y], [x + r, y], [x, y - r], [x, y + r]];
     for (const [px, py] of pts) {
       const { tx, ty } = worldToTile(px, py);
-      if (isSolidTile(map, tx, ty)) return true;
+      if (isSolidTile(map, tx, ty, { forMovement: true })) return true;
     }
     return false;
   }

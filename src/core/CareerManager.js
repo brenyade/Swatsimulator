@@ -35,7 +35,7 @@ export class CareerManager {
       this.data.results[index] = { grade, score, completed: true };
     }
     if (index >= this.data.unlockedIndex) {
-      this.data.unlockedIndex = Math.min(index + 1, 4);
+      this.data.unlockedIndex = index + 1;
     }
     this.data.rank = rankForUnlocked(this.data.unlockedIndex);
     this.save();

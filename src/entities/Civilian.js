@@ -19,6 +19,7 @@ export class Civilian extends Entity {
 
   update(dt, mission) {
     if (!this.alive) return;
+    if (this.tickStun(dt)) return;
 
     if (mission.lastLoudEventPos) {
       const d = dist(this.x, this.y, mission.lastLoudEventPos.x, mission.lastLoudEventPos.y);
