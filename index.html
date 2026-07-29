@@ -106,6 +106,12 @@
         <button class="btn btn-back" data-back="menu">← BACK</button>
       </div>
       <div class="options-body">
+        <div class="opt-row">
+          <span>Graphics Quality</span>
+          <div class="opt-presets" id="opt-gfx-presets"></div>
+        </div>
+        <label class="opt-row"><span>Gore Level</span><input type="range" id="opt-gore" min="0" max="200" value="100"></label>
+        <label class="opt-row"><span>Show FPS Counter</span><input type="checkbox" id="opt-fps"></label>
         <label class="opt-row"><span>Master Volume</span><input type="range" id="opt-volume" min="0" max="100" value="70"></label>
         <label class="opt-row"><span>Mouse Sensitivity</span><input type="range" id="opt-sens" min="20" max="200" value="100"></label>
         <label class="opt-row"><span>Show Command Bar Hints</span><input type="checkbox" id="opt-hints" checked></label>
@@ -163,6 +169,7 @@
         <div id="hud-context"></div>
         <div id="hud-flash-overlay"></div>
         <div id="hud-damage-vignette"></div>
+        <div id="hud-fps" class="hud-fps"></div>
       </div>
 
       <div id="pointer-lock-hint"><span>CLICK TO PLAY<br><small>ALT + ENTER TO TOGGLE FULLSCREEN</small></span></div>

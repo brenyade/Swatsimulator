@@ -53,6 +53,14 @@ export class GameRunner {
     return this.renderer3d.resizeToDisplaySize(force);
   }
 
+  // Rebuilds the 3D scene around the live mission state, so quality settings
+  // that are baked at build time can be changed without losing the mission.
+  rebuildScene() {
+    if (!this.mission) return;
+    this.renderer3d.buildScene(this.mission);
+    this.resize(true);
+  }
+
   setPaused(v) {
     this.paused = v;
     if (v) this.input.exitLock();
@@ -115,7 +123,7 @@ export class GameRunner {
 
     this.renderer3d.update(this.mission, this.paused ? 0 : dt, this.marker);
     this.renderer3d.render();
-    updateHUD(this.mission, this.input);
+    updateHUD(this.mission, this.input, dt);
     this._animationLoop.schedule();
   }
 }

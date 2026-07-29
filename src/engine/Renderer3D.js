@@ -1,8 +1,15 @@
 import * as THREE from '../vendor/three.module.js';
+import { EffectComposer } from '../vendor/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
+import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
 import {
   spawnCharacter, spawnWeapon, spawnProp, spawnDoorModel, equipCharacterRole, ROLE_VARIANTS,
 } from './ModelLibrary.js';
 import { spawnEnvironmentProp } from './EnvironmentKit.js';
+import { BloodSystem } from './BloodSystem.js';
+import { graphics, onGraphicsChange } from '../core/GraphicsSettings.js';
 
 // One world unit == half a tile (32px). Keeps corridors ~2 units wide and
 // rooms human-scaled instead of cavernous.
@@ -14,59 +21,155 @@ const MAX_PIXEL_RATIO = 1.5;
 const RESIZE_POLL_FRAMES = 60;
 const MAX_PRACTICAL_LIGHTS = 3;
 const MAX_TRACERS = 64;
-const MAX_BLOOD_DECALS = 96;
-const MAX_BLOOD_BURSTS = 48;
 
 export const gx = (x) => x * SCALE;
 export const gz = (y) => y * SCALE;
+// The camera looks down its local -Z, but characters are authored facing +Z,
+// so the two need yaw formulas that differ by exactly PI — using the camera
+// formula for characters renders them walking backwards.
 export const yawFromFacing = (facing) => -facing - Math.PI / 2;
+export const charYawFromFacing = (facing) => -facing + Math.PI / 2;
 
 // Weapons are attached to the torso rather than the (single rigid-bone, no
 // wrist) arm — the arm's rotation swings wildly between animation poses, so
 // a torso-relative offset gives a stable "held at the ready" look instead.
+// Procedural weapons are authored barrel-along-+X; a -PI/2 yaw points the
+// barrel down the character's forward (+Z local) instead of backwards.
 const WEAPON_GRIP = { x: 0.62, y: 0.5, z: 0.2 };
-const WEAPON_GRIP_ROT = { x: 0, y: Math.PI / 2, z: 0 };
+const WEAPON_GRIP_ROT = { x: 0, y: -Math.PI / 2, z: 0 };
 
-function makeCheckerTexture(c1, c2, repeatX, repeatY) {
+const TEX_SIZE = 256;
+let maxAnisotropy = 1;
+
+// High-res procedural surface textures. Every material in the world is
+// generated at runtime from a base/accent color pair plus a pattern painter,
+// so the whole game upgrades visually with zero downloaded image assets.
+function makeCheckerTexture(c1, c2, repeatX, repeatY, pattern = 'noise') {
   const canvas = document.createElement('canvas');
-  canvas.width = 64; canvas.height = 64;
+  canvas.width = TEX_SIZE; canvas.height = TEX_SIZE;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = c1;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  let seed = [...`${c1}${c2}`].reduce((n, ch) => (n * 33 + ch.charCodeAt(0)) >>> 0, 2166136261);
+  ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+  let seed = [...`${c1}${c2}${pattern}`].reduce((n, ch) => (n * 33 + ch.charCodeAt(0)) >>> 0, 2166136261);
   const random = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 0xffffffff;
   };
+
+  // Multi-octave value noise: broad tonal patches, medium blotches, fine grain.
   ctx.fillStyle = c2;
-  ctx.globalAlpha = 0.22;
-  for (let i = 0; i < 420; i++) {
-    const size = 1 + Math.floor(random() * 3);
-    ctx.fillRect(Math.floor(random() * 64), Math.floor(random() * 64), size, size);
+  for (const [count, min, max, alpha] of [[46, 22, 64, 0.07], [240, 6, 18, 0.07], [1500, 1, 3, 0.1]]) {
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < count; i++) {
+      const size = min + random() * (max - min);
+      ctx.fillRect(random() * TEX_SIZE, random() * TEX_SIZE, size, size);
+    }
   }
-  ctx.globalAlpha = 0.16;
-  ctx.fillRect(0, 31, 64, 2);
-  ctx.fillRect(31, 0, 2, 64);
+
+  ctx.globalAlpha = 1;
+  if (pattern === 'wood') {
+    // plank rows with butt joints and grain streaks
+    const plankH = 43;
+    for (let y = 0; y < TEX_SIZE; y += plankH) {
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#181008';
+      ctx.fillRect(0, y, TEX_SIZE, 2);
+      const joint = random() * TEX_SIZE;
+      ctx.fillRect(joint, y, 2, plankH);
+      ctx.globalAlpha = 0.1;
+      for (let g = 0; g < 26; g++) {
+        ctx.fillStyle = random() > 0.5 ? '#000000' : '#ffe6bf';
+        ctx.fillRect(random() * TEX_SIZE, y + 3 + random() * (plankH - 6), 14 + random() * 60, 1);
+      }
+    }
+  } else if (pattern === 'tile') {
+    const cell = 64;
+    for (let y = 0; y < TEX_SIZE; y += cell) {
+      for (let x = 0; x < TEX_SIZE; x += cell) {
+        ctx.globalAlpha = random() * 0.08;
+        ctx.fillStyle = c2;
+        ctx.fillRect(x, y, cell, cell);
+      }
+    }
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#1a1d1c';
+    for (let i = 0; i <= TEX_SIZE; i += cell) {
+      ctx.fillRect(0, i - 1, TEX_SIZE, 2);
+      ctx.fillRect(i - 1, 0, 2, TEX_SIZE);
+    }
+  } else if (pattern === 'grass') {
+    for (let i = 0; i < 1100; i++) {
+      ctx.globalAlpha = 0.16 + random() * 0.18;
+      ctx.fillStyle = random() > 0.6 ? '#6f8f4a' : random() > 0.5 ? c2 : '#233a1e';
+      ctx.fillRect(random() * TEX_SIZE, random() * TEX_SIZE, 1 + random() * 1.5, 3 + random() * 6);
+    }
+  } else if (pattern === 'concrete') {
+    for (let i = 0; i < 22; i++) {
+      const cx = random() * TEX_SIZE, cy = random() * TEX_SIZE, r = 18 + random() * 52;
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+      grad.addColorStop(0, 'rgba(0,0,0,0.09)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = grad;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = '#101210';
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      let x = random() * TEX_SIZE, y = random() * TEX_SIZE;
+      ctx.moveTo(x, y);
+      for (let s = 0; s < 5; s++) { x += (random() - 0.5) * 60; y += random() * 40; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  } else if (pattern === 'panel') {
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#101512';
+    for (let y = 84; y < TEX_SIZE; y += 84) ctx.fillRect(0, y, TEX_SIZE, 2);
+    ctx.globalAlpha = 0.1;
+    for (let x = 128; x < TEX_SIZE; x += 128) ctx.fillRect(x, 0, 2, TEX_SIZE);
+    // grime gradient pooling at the bottom of each panel course
+    const grime = ctx.createLinearGradient(0, 0, 0, TEX_SIZE);
+    grime.addColorStop(0, 'rgba(255,255,255,0.045)');
+    grime.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = grime;
+    ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+  } else if (pattern === 'metal') {
+    ctx.globalAlpha = 0.055;
+    for (let i = 0; i < 220; i++) {
+      ctx.fillStyle = random() > 0.5 ? '#ffffff' : '#000000';
+      ctx.fillRect(0, random() * TEX_SIZE, TEX_SIZE, 1);
+    }
+  } else if (pattern === 'asphalt') {
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#8d9297';
+    for (let i = 0; i < 900; i++) ctx.fillRect(random() * TEX_SIZE, random() * TEX_SIZE, 1.5, 1.5);
+  }
+
   ctx.globalAlpha = 1;
   const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = Math.min(8, maxAnisotropy);
   tex.repeat.set(repeatX, repeatY);
   return tex;
 }
 
 const SURFACE_STYLES = {
-  grass: { a: '#304d2c', b: '#3b6135', roughness: 1.0 },
-  walkway: { a: '#8a8a84', b: '#787770', roughness: 0.95 },
-  porch: { a: '#8b765e', b: '#7a674f', roughness: 0.92 },
-  driveway: { a: '#565a60', b: '#494d52', roughness: 0.97 },
-  hardwood: { a: '#6d4d32', b: '#7b583b', roughness: 0.9 },
-  tile: { a: '#bdb8ae', b: '#a7a298', roughness: 0.84 },
+  grass: { a: '#304d2c', b: '#3b6135', roughness: 1.0, pattern: 'grass' },
+  walkway: { a: '#8a8a84', b: '#787770', roughness: 0.95, pattern: 'concrete' },
+  porch: { a: '#8b765e', b: '#7a674f', roughness: 0.92, pattern: 'wood' },
+  driveway: { a: '#565a60', b: '#494d52', roughness: 0.97, pattern: 'concrete' },
+  hardwood: { a: '#6d4d32', b: '#7b583b', roughness: 0.9, pattern: 'wood' },
+  tile: { a: '#bdb8ae', b: '#a7a298', roughness: 0.84, pattern: 'tile' },
   carpet: { a: '#5a6973', b: '#4e5c66', roughness: 1.0 },
-  concrete: { a: '#6e7376', b: '#5e6367', roughness: 0.96 },
-  asphalt: { a: '#353b40', b: '#2b3035', roughness: 1.0 },
-  metal: { a: '#5d666c', b: '#495158', roughness: 0.62, metalness: 0.45 },
-  linoleum: { a: '#85908b', b: '#737e79', roughness: 0.82 },
+  concrete: { a: '#6e7376', b: '#5e6367', roughness: 0.96, pattern: 'concrete' },
+  asphalt: { a: '#353b40', b: '#2b3035', roughness: 1.0, pattern: 'asphalt' },
+  metal: { a: '#5d666c', b: '#495158', roughness: 0.62, metalness: 0.45, pattern: 'metal' },
+  linoleum: { a: '#85908b', b: '#737e79', roughness: 0.82, pattern: 'tile' },
 };
 
 function buildSurfaceIndex(def) {
@@ -153,12 +256,28 @@ export class Renderer3D {
       stencil: false,
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, graphics.pixelRatioCap));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.enabled = graphics.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy();
+
+    // Live quality changes that don't need the scene rebuilt.
+    onGraphicsChange((g) => {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, g.pixelRatioCap));
+      this.renderer.shadowMap.enabled = g.shadows;
+      if (this.bloomPass) this.bloomPass.strength = g.postFX ? g.bloomStrength : 0;
+      this.blood?.setGore(g.goreLevel);
+      this.resizeToDisplaySize(true);
+    });
+
+    // Image-based ambient lighting: a neutral studio environment gives every
+    // PBR material believable specular response instead of flat diffuse.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
 
     this.camera = new THREE.PerspectiveCamera(78, canvas.width / canvas.height, 0.05, 90);
     this.camera.rotation.order = 'YXZ';
@@ -170,6 +289,24 @@ export class Renderer3D {
     this.viewmodelWeaponId = null;
     this.viewmodelMesh = null;
     this.camera.add(this.viewmodel);
+
+    // Muzzle flash: a brief hot point light plus an additive card at the
+    // muzzle, driven by player.muzzleFlash each frame.
+    this.muzzleLight = new THREE.PointLight(0xffc66b, 0, 5, 2);
+    this.muzzleLight.position.set(0.35, -0.3, -1.1);
+    this.camera.add(this.muzzleLight);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xffd9a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthTest: false,
+    });
+    this.muzzleFlashMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), flashMat);
+    this.muzzleFlashMesh.position.set(0.36, -0.31, -1.35);
+    this.muzzleFlashMesh.renderOrder = 3;
+    this.muzzleFlashMesh.visible = false;
+    this.camera.add(this.muzzleFlashMesh);
+
+    this.composer = null;
+    this.renderPass = null;
+    this.bloomPass = null;
 
     this.scene = null;
     this.entityInstances = new Map(); // entity.id -> { instance, kind, lastX, lastY, animName }
@@ -199,6 +336,7 @@ export class Renderer3D {
     if (!force && this.canvas.width === targetWidth && this.canvas.height === targetHeight) return false;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(rect.width, rect.height, false);
+    this.composer?.setSize(rect.width, rect.height);
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     return true;
@@ -232,17 +370,19 @@ export class Renderer3D {
       child.renderOrder = 2;
     });
     holder.add(weapon);
+    // A PI/2 yaw alone points the barrel straight down -Z, which presents the
+    // weapon dead-on and reads as a flat slab. Adding a little extra yaw
+    // (muzzle toward screen centre, converging on the crosshair) plus a touch
+    // of pitch gives the standard three-quarter FPS presentation, and backing
+    // the model off stops the near plane from cropping it into a black wall.
     if (weaponId === 'm9') {
-      // Pistols are small enough to sit closer to the camera and lower in frame.
-      holder.position.set(0.30, -0.30, -0.62);
-      holder.rotation.y = Math.PI / 2;
-      holder.scale.setScalar(0.7);
+      holder.position.set(0.22, -0.26, -0.80);
+      holder.rotation.set(0.06, Math.PI / 2 + 0.22, 0.04);
+      holder.scale.setScalar(0.55);
     } else {
-      // Keep the stock in front of the near plane. The previous position put
-      // the camera inside long guns, making them look like giant black blocks.
-      holder.position.set(0.38, -0.40, -1.20);
-      holder.rotation.y = Math.PI / 2;
-      holder.scale.setScalar(0.43);
+      holder.position.set(0.30, -0.32, -1.05);
+      holder.rotation.set(0.04, Math.PI / 2 + 0.16, 0.03);
+      holder.scale.setScalar(0.40);
     }
     this.viewmodel.add(holder);
     this.viewmodelMesh = holder;
@@ -257,30 +397,58 @@ export class Renderer3D {
     this.evidenceMeshes = [];
     this.tracerMesh = null;
     this.tracerPositionAttribute = null;
-    this.bloodPoolMesh = null;
-    this.bloodBurstGroup = null;
-    this.bloodParticleGeo = null;
-    this._bloodPoolRendered = 0;
+    this.blood = null;
+    this.skyDome = null;
   }
 
   buildScene(mission) {
     this.disposeScene();
     const environment = mission.def.environment || {};
     const scene = new THREE.Scene();
-    const skyColor = environment.sky ?? 0x51616f;
-    scene.background = new THREE.Color(skyColor);
-    scene.fog = new THREE.FogExp2(environment.fog ?? skyColor, environment.fogDensity ?? 0.02);
+    const skyColor = new THREE.Color(environment.sky ?? 0x51616f);
+    scene.fog = new THREE.FogExp2(environment.fog ?? skyColor.getHex(), environment.fogDensity ?? 0.02);
+    scene.environment = this.envTexture;
     scene.add(this.camera);
+
+    // Gradient sky dome — a real geometry dome (bright horizon, deep zenith)
+    // that rotates correctly with the camera, replacing the old flat
+    // background color.
+    const SKY_RADIUS = 70;
+    const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 14);
+    const horizon = skyColor.clone().multiplyScalar(1.28);
+    const zenith = skyColor.clone().multiplyScalar(0.5);
+    const skyColors = [];
+    const pos = skyGeo.attributes.position;
+    const tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      // Bright band at the horizon (y == 0) easing up into the deeper zenith.
+      // Mapping the bright end to the bottom pole instead washed the whole
+      // visible sky to the dark zenith colour.
+      const up = Math.max(0, pos.getY(i) / SKY_RADIUS);
+      tmp.copy(horizon).lerp(zenith, Math.pow(up, 0.55));
+      skyColors.push(tmp.r, tmp.g, tmp.b);
+    }
+    skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+    const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+    const skyDome = new THREE.Mesh(skyGeo, skyMat);
+    skyDome.renderOrder = -1;
+    skyDome.frustumCulled = false;
+    scene.add(skyDome);
+    // The dome has to ride with the camera. Pinned at the world origin it sits
+    // only ~13 units off the far side of a 68x48 map, so its dark upper shell
+    // hangs over the level as a huge black dome instead of reading as sky.
+    this.skyDome = skyDome;
+    this._disposables.push(() => { skyGeo.dispose(); skyMat.dispose(); });
 
     scene.add(new THREE.HemisphereLight(
       environment.hemiSky ?? 0xb3c7d8,
       environment.hemiGround ?? 0x30402c,
-      environment.hemiIntensity ?? 1.85,
+      environment.hemiIntensity ?? 1.55,
     ));
-    const sun = new THREE.DirectionalLight(environment.sun ?? 0xffffff, environment.sunIntensity ?? 0.72);
+    const sun = new THREE.DirectionalLight(environment.sun ?? 0xffffff, environment.sunIntensity ?? 0.85);
     sun.position.set(6, 10, 4);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(512, 512);
+    sun.castShadow = graphics.shadows;
+    sun.shadow.mapSize.set(graphics.shadowMapSize, graphics.shadowMapSize);
     sun.shadow.bias = -0.0008;
     sun.shadow.normalBias = 0.035;
     sun.shadow.camera.left = -30;
@@ -322,7 +490,7 @@ export class Renderer3D {
     const tileMatrix = new THREE.Matrix4();
     for (const [style, tiles] of floorTilesByStyle.entries()) {
       const cfg = SURFACE_STYLES[style] || SURFACE_STYLES.hardwood;
-      const tex = makeCheckerTexture(cfg.a, cfg.b, 2, 2);
+      const tex = makeCheckerTexture(cfg.a, cfg.b, 1, 1, cfg.pattern);
       const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: cfg.roughness, metalness: cfg.metalness || 0 });
       const mesh = new THREE.InstancedMesh(floorGeo, mat, Math.max(1, tiles.length));
       tiles.forEach(([tx, ty], i) => {
@@ -343,8 +511,9 @@ export class Renderer3D {
     const ceilTex = makeCheckerTexture(
       `#${ceilingBase.getHexString()}`,
       `#${ceilingAlt.getHexString()}`,
-      2,
-      2,
+      1,
+      1,
+      'panel',
     );
     const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1 });
     const ceilingMesh = new THREE.InstancedMesh(ceilGeo, ceilMat, Math.max(1, ceilingTiles.length));
@@ -375,7 +544,7 @@ export class Renderer3D {
     // Point lights are among the most expensive inputs to every PBR shader.
     // Keep all visible emissive panels, but use only a few evenly distributed
     // real lights plus the player's headlamp and broad hemisphere lighting.
-    const practicalCount = Math.min(MAX_PRACTICAL_LIGHTS, fixtureTiles.length);
+    const practicalCount = Math.min(graphics.practicalLights, fixtureTiles.length);
     for (let i = 0; i < practicalCount; i++) {
       const [tx, ty] = fixtureTiles[Math.floor(i * fixtureTiles.length / practicalCount)];
       const practical = new THREE.PointLight(0xffe2b2, 0.48, 7.5, 2);
@@ -394,7 +563,7 @@ export class Renderer3D {
     const wallGeo = new THREE.BoxGeometry(TILE_W, WALL_H, TILE_W);
     const wallBase = new THREE.Color(environment.wall ?? 0x2a322b);
     const wallAlt = wallBase.clone().multiplyScalar(0.82);
-    const wallTex = makeCheckerTexture(`#${wallBase.getHexString()}`, `#${wallAlt.getHexString()}`, 1, 1);
+    const wallTex = makeCheckerTexture(`#${wallBase.getHexString()}`, `#${wallAlt.getHexString()}`, 1, 1, 'panel');
     const wallMat = new THREE.MeshStandardMaterial({
       map: wallTex,
       color: 0xffffff,
@@ -604,23 +773,22 @@ export class Renderer3D {
     this.tracerGroup = new THREE.Group();
     scene.add(this.tracerGroup);
 
-    // Persistent blood pools — one shared instanced mesh, grown incrementally
-    // as suspects/teammates die instead of rebuilt every frame.
-    const poolGeo = new THREE.CircleGeometry(0.32, 10);
-    const poolMat = new THREE.MeshBasicMaterial({
-      color: 0x5c0f10, transparent: true, opacity: 0.92, depthWrite: false,
-    });
-    this.bloodPoolMesh = new THREE.InstancedMesh(poolGeo, poolMat, MAX_BLOOD_DECALS);
-    this.bloodPoolMesh.count = 0;
-    scene.add(this.bloodPoolMesh);
-    this._bloodPoolRendered = 0;
-    this._disposables.push(() => { poolGeo.dispose(); poolMat.dispose(); });
-
-    // Short-lived blood impact bursts, rebuilt each frame like tracers.
-    this.bloodBurstGroup = new THREE.Group();
-    scene.add(this.bloodBurstGroup);
-    this.bloodParticleGeo = new THREE.SphereGeometry(0.045, 5, 4);
-    this._disposables.push(() => { this.bloodParticleGeo.dispose(); });
+    // Gore: droplets are simulated with gravity and leave oriented decals
+    // wherever they land, so walls and floors accumulate real splatter and
+    // corpses bleed out into pools that keep spreading.
+    const bloodMap = mission.map;
+    const solidAt = (wx, wz) => {
+      const tx = Math.floor(wx / (SCALE * 32));
+      const ty = Math.floor(wz / (SCALE * 32));
+      if (tx < 0 || ty < 0 || tx >= bloodMap.width || ty >= bloodMap.height) return true;
+      return bloodMap.grid[ty][tx] === '#';
+    };
+    this.blood = new BloodSystem(
+      scene,
+      { particleBudget: graphics.particleBudget, goreLevel: graphics.goreLevel },
+      solidAt,
+    );
+    this._disposables.push(() => { this.blood?.dispose(); this.blood = null; });
 
     this.scene = scene;
 
@@ -632,6 +800,25 @@ export class Renderer3D {
     for (const c of mission.civilians) this._createInstance(c, 'civilian', ci++);
 
     this._setViewmodelWeapon(mission.player.currentWeaponId);
+    this._buildComposer(scene);
+  }
+
+  // Post-processing chain: multisampled scene render -> subtle bloom (bright
+  // fixtures, muzzle flash, emissive glass pick up a soft glow) -> tone
+  // mapping/color-space output.
+  _buildComposer(scene) {
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, {
+      type: THREE.HalfFloatType,
+      samples: 4,
+    });
+    this.composer?.dispose();
+    this.composer = new EffectComposer(this.renderer, target);
+    this.renderPass = new RenderPass(scene, this.camera);
+    this.bloomPass = new UnrealBloomPass(size.clone(), graphics.postFX ? graphics.bloomStrength * 0.45 : 0, 0.65, 0.86);
+    this.composer.addPass(this.renderPass);
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
   }
 
   _createInstance(entity, kind, seed) {
@@ -694,7 +881,7 @@ export class Renderer3D {
       rec.animName = 'die';
       rec.diedAt = this._clock;
       instance.root.position.set(gx(entity.x), 0, gz(entity.y));
-      instance.root.rotation.y = yawFromFacing(entity.facing);
+      instance.root.rotation.y = charYawFromFacing(entity.facing);
     }
     instance.root.visible = true;
     if (this._clock - rec.diedAt < 1.5) instance.update(dt);
@@ -711,7 +898,7 @@ export class Renderer3D {
 
     instance.root.visible = true;
     instance.root.position.set(gx(entity.x), 0, gz(entity.y));
-    instance.root.rotation.y = yawFromFacing(entity.facing);
+    instance.root.rotation.y = charYawFromFacing(entity.facing);
 
     const anim = this._animNameFor(entity, rec.kind, moving);
     instance.play(anim.name, { loopOnce: !!anim.loopOnce });
@@ -769,52 +956,26 @@ export class Renderer3D {
       this.tracerGroup.add(new THREE.Line(geo, mat));
     }
 
-    // blood pools — append any pools added since last frame; the buffer is
-    // never rewritten in full, only grown, so this stays cheap even with
-    // dozens already on the ground.
-    if (this.bloodPoolMesh && mission.bloodPools.length > this._bloodPoolRendered) {
-      const capacity = MAX_BLOOD_DECALS;
-      for (let i = this._bloodPoolRendered; i < mission.bloodPools.length; i++) {
-        const pool = mission.bloodPools[i];
-        const slot = i % capacity;
-        const scale = 0.75 + pool.seed * 0.85;
-        this._scratchMatrix.makeRotationX(-Math.PI / 2);
-        this._scratchMatrix.multiply(new THREE.Matrix4().makeRotationZ(pool.seed * Math.PI * 2));
-        this._scratchMatrix.scale(new THREE.Vector3(scale, scale, 1));
-        this._scratchMatrix.setPosition(gx(pool.x), 0.012, gz(pool.y));
-        this.bloodPoolMesh.setMatrixAt(slot, this._scratchMatrix);
+    // Gore. Each hit event is emitted into the particle sim exactly once; the
+    // sim then owns the droplets, the decals they leave and the pools that
+    // spread under the bodies, all of which persist for the whole mission.
+    if (this.blood) {
+      for (const fx of mission.effects) {
+        if (fx.type !== 'blood-burst' || fx._emitted) continue;
+        fx._emitted = true;
+        const power = fx.power ?? 1;
+        const wx = gx(fx.x), wz = gz(fx.y);
+        if (fx.fatal) this.blood.gib(wx, EYE_HEIGHT * 0.62, wz, fx.dirX ?? 1, fx.dirY ?? 0);
+        else this.blood.burst(wx, EYE_HEIGHT * 0.68, wz, fx.dirX ?? 1, fx.dirY ?? 0, power);
+        // Getting sprayed at close range paints the visor.
+        const camDist = Math.hypot(this.camera.position.x - wx, this.camera.position.z - wz);
+        if (camDist < 2.6) this.blood.splashScreen((fx.fatal ? 0.7 : 0.32) * (1 - camDist / 2.6));
       }
-      this._bloodPoolRendered = mission.bloodPools.length;
-      this.bloodPoolMesh.count = Math.min(capacity, mission.bloodPools.length);
-      this.bloodPoolMesh.instanceMatrix.needsUpdate = true;
-    }
-
-    // blood impact bursts — small red particles that fly outward from the
-    // hit point and fall away, rebuilt each frame like tracers since they
-    // only live a fraction of a second.
-    for (const child of this.bloodBurstGroup.children) child.material?.dispose();
-    this.bloodBurstGroup.clear();
-    let activeBursts = 0;
-    for (const fx of mission.effects) {
-      if (fx.type !== 'blood-burst' || fx.age >= fx.duration) continue;
-      if (++activeBursts > MAX_BLOOD_BURSTS) break;
-      const t2 = fx.age / fx.duration;
-      const particleCount = 6;
-      for (let i = 0; i < particleCount; i++) {
-        const angle = (i / particleCount) * Math.PI * 2 + fx.x * 0.013 + fx.y * 0.007;
-        const spread = t2 * 0.55;
-        const mat = new THREE.MeshBasicMaterial({
-          color: 0xa9161a, transparent: true, opacity: Math.max(0, 1 - t2),
-        });
-        const mesh = new THREE.Mesh(this.bloodParticleGeo, mat);
-        mesh.scale.setScalar(1 - t2 * 0.5);
-        mesh.position.set(
-          gx(fx.x) + Math.cos(angle) * spread,
-          EYE_HEIGHT * 0.55 - t2 * t2 * 0.7,
-          gz(fx.y) + Math.sin(angle) * spread,
-        );
-        this.bloodBurstGroup.add(mesh);
+      if (!mission.player.alive || mission.player.hitFlash > 0.55) {
+        this.blood.splashScreen(mission.player.hitFlash * 0.04);
       }
+      this.blood.update(dt, this.camera.position);
+      if (this.bloodSplatterPass) this.bloodSplatterPass(this.blood.screenSplatter);
     }
 
     // camera
@@ -829,6 +990,7 @@ export class Renderer3D {
     this.camera.rotation.y = yawFromFacing(p.facing);
     this.camera.rotation.x = p.pitch;
     this.camera.rotation.z = -(p.lean || 0) * 0.075;
+    if (this.skyDome) this.skyDome.position.copy(this.camera.position);
 
     this._setViewmodelWeapon(p.currentWeaponId);
 
@@ -846,10 +1008,26 @@ export class Renderer3D {
     }
 
     this.headlamp.intensity = 1.3;
+
+    // muzzle flash — hot light + additive card for the few frames after a shot
+    const flash = p.muzzleFlash || 0;
+    if (flash > 0) {
+      const strength = flash / 0.055;
+      this.muzzleLight.intensity = 30 * strength;
+      this.muzzleFlashMesh.visible = true;
+      this.muzzleFlashMesh.material.opacity = 0.85 * strength;
+      this.muzzleFlashMesh.rotation.z = this._clock * 53 % (Math.PI * 2);
+      const s = 0.8 + strength * 0.5;
+      this.muzzleFlashMesh.scale.set(s, s, s);
+    } else {
+      this.muzzleLight.intensity = 0;
+      this.muzzleFlashMesh.visible = false;
+    }
   }
 
   render() {
     this.resizeToDisplaySize();
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 }

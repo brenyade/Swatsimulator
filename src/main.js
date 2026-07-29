@@ -6,7 +6,12 @@ import { WEAPONS, EQUIPMENT } from './core/Weapons.js';
 import { setVolume, resumeAudio, playUiClick } from './core/Audio.js';
 import { settings } from './core/Settings.js';
 import { preloadAll } from './engine/ModelLibrary.js';
+import { loadGraphics, applyPreset, setGore, graphics, PRESETS } from './core/GraphicsSettings.js';
 import { buildCustomMission, CUSTOM_MAP_TEMPLATE } from './maps/customMap.js';
+
+// Resolve the quality preset before the renderer is constructed — it reads
+// shadow, sampling and pixel-ratio settings while building its context.
+loadGraphics();
 
 const career = new CareerManager();
 const canvas = document.getElementById('game-canvas');
@@ -320,6 +325,35 @@ function renderArmory() {
 }
 
 // ---------------------------------------------------------------- options
+const presetHost = document.getElementById('opt-gfx-presets');
+function renderPresetButtons() {
+  presetHost.innerHTML = '';
+  for (const [key, preset] of Object.entries(PRESETS)) {
+    const btn = document.createElement('button');
+    btn.textContent = preset.label;
+    btn.className = key === graphics.presetName ? 'active' : '';
+    btn.addEventListener('click', () => {
+      playUiClick();
+      applyPreset(key);
+      renderPresetButtons();
+      // Texture resolution, shadow maps and light counts are baked when the
+      // scene is built, so an active mission has to be rebuilt to pick them up.
+      if (runner.running && currentMissionDef) runner.rebuildScene();
+    });
+    presetHost.appendChild(btn);
+  }
+}
+renderPresetButtons();
+
+const goreSlider = document.getElementById('opt-gore');
+goreSlider.value = String(Math.round(graphics.goreLevel * 100));
+goreSlider.addEventListener('input', () => setGore(goreSlider.value / 100));
+
+const fpsToggle = document.getElementById('opt-fps');
+fpsToggle.addEventListener('change', (e) => {
+  document.getElementById('hud-fps').classList.toggle('show', e.target.checked);
+});
+
 const volSlider = document.getElementById('opt-volume');
 volSlider.addEventListener('input', () => setVolume(volSlider.value / 100));
 setVolume(volSlider.value / 100);

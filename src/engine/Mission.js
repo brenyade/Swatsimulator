@@ -193,8 +193,11 @@ export class Mission {
 
   onPlayerFired() { this.markLoudEvent(this.player.x, this.player.y); }
 
-  spawnBloodImpact(x, y) {
-    this.effects.push({ type: 'blood-burst', x, y, age: 0, duration: 0.4 });
+  // dirX/dirY is the shot vector, so spray continues through the target
+  // instead of puffing symmetrically. `power` scales with damage; `fatal`
+  // upgrades the hit to a full burst plus a spreading pool.
+  spawnBloodImpact(x, y, dirX = 1, dirY = 0, power = 1, fatal = false) {
+    this.effects.push({ type: 'blood-burst', x, y, dirX, dirY, power, fatal, age: 0, duration: 0.4 });
   }
 
   spawnBloodPool(x, y) {
@@ -205,7 +208,10 @@ export class Mission {
   onHit(shooter, target, dmg) {
     this.markLoudEvent(target.x, target.y);
     if (target.team === 'player') { playHurt(); this.player.registerHit?.(dmg); }
-    this.spawnBloodImpact(target.x, target.y);
+    const ddx = target.x - shooter.x, ddy = target.y - shooter.y;
+    const dl = Math.hypot(ddx, ddy) || 1;
+    const dirX = ddx / dl, dirY = ddy / dl;
+    this.spawnBloodImpact(target.x, target.y, dirX, dirY, Math.max(0.6, Math.min(3, dmg / 22)), false);
     if (shooter.team === 'player') {
       const suspectState = target.stateAtDeath || target.state;
       const unlawful = target.team === 'civilian'
@@ -217,6 +223,7 @@ export class Mission {
     if (target.team === 'suspect') target.applyPressure?.(0.12 + Math.min(0.2, dmg / 120));
     if (target.alive || target._deathProcessed) return;
     target._deathProcessed = true;
+    this.spawnBloodImpact(target.x, target.y, dirX, dirY, 3, true);
     this.spawnBloodPool(target.x, target.y);
     if (target.team === 'civilian') this.score.recordCivilianCasualty();
     else if (target.team === 'hostage') this.score.recordHostageDied();

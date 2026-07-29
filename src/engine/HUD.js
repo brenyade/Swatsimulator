@@ -26,8 +26,14 @@ function cacheElements() {
     damageVignette: document.getElementById('hud-damage-vignette'),
     crosshair: document.getElementById('hud-crosshair'),
     context: document.getElementById('hud-context'),
+    fps: document.getElementById('hud-fps'),
   };
 }
+
+// Smoothed frame timing for the optional on-screen counter.
+let _fpsAccum = 0;
+let _fpsFrames = 0;
+let _fpsShown = 0;
 
 export function initCommandBar() {
   const bar = document.getElementById('hud-command-bar');
@@ -46,9 +52,20 @@ export function initCommandBar() {
   cacheElements();
 }
 
-export function updateHUD(mission, input) {
+export function updateHUD(mission, input, dt = 0) {
   if (!el) cacheElements();
   const p = mission.player;
+
+  if (el.fps && el.fps.classList.contains('show')) {
+    _fpsAccum += dt;
+    _fpsFrames++;
+    if (_fpsAccum >= 0.35) {
+      _fpsShown = Math.round(_fpsFrames / _fpsAccum);
+      _fpsAccum = 0;
+      _fpsFrames = 0;
+    }
+    el.fps.textContent = `${_fpsShown} FPS  ·  ${dt > 0 ? (dt * 1000).toFixed(1) : '0.0'} ms`;
+  }
 
   el.objectives.innerHTML = mission.def.objectives.map((o) => {
     let done = false;

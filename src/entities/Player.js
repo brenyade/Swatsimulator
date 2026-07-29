@@ -40,6 +40,7 @@ export class Player extends Entity {
     this.isAiming = false;
     this.currentSpread = this.currentWeapon.spread;
     this.hitFlash = 0;
+    this.muzzleFlash = 0;
   }
 
   get currentWeaponId() { return this.slot === 'lethal' ? this.loadout.lethal : this.loadout.nonlethal; }
@@ -103,6 +104,7 @@ export class Player extends Entity {
 
     this.recoil *= Math.exp(-dt * 10);
     this.hitFlash = Math.max(0, this.hitFlash - dt * 1.6);
+    this.muzzleFlash = Math.max(0, this.muzzleFlash - dt);
 
     const ammo = this.currentAmmo;
     if (ammo.reloading) {
@@ -139,6 +141,7 @@ export class Player extends Entity {
         mission.onPlayerFired?.();
         playShot(this.currentWeaponId);
         this.recoil = Math.min(1.4, this.recoil + (weapon.pellets ? 0.9 : weapon.id === 'm4' ? 0.34 : 0.4));
+        this.muzzleFlash = weapon.lethal ? 0.055 : 0.03;
       } else if (ammo.reserve > 0) {
         this.reload();
       }

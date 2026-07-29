@@ -154,7 +154,9 @@ await evaluate("window.__game.runner.mission.openDoor(8, 16, 'breach')");
 await waitFor(
   () => evaluate("window.__game.runner.renderer3d.doorMeshes.find((door) => door.key === '8,16')?.openAmount > 0.98"),
   'Door breach animation did not complete',
-  5000,
+  // Generous because this runs against a software rasteriser in CI, where the
+  // full-quality scene renders at only a couple of frames per second.
+  20000,
 );
 await capture(breachedOutput);
 

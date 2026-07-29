@@ -240,6 +240,23 @@ html, body {
   position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
 }
 
+.opt-presets { display: flex; gap: 6px; }
+.opt-presets button {
+  font-family: inherit; background: var(--bg-panel); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 3px; padding: 6px 12px;
+  font-size: 0.75rem; letter-spacing: 0.06em; cursor: pointer;
+}
+.opt-presets button:hover { border-color: var(--accent); color: var(--text); }
+.opt-presets button.active { background: var(--accent); border-color: var(--accent); color: #1a1400; font-weight: 700; }
+
+.hud-fps {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  font-family: 'Consolas', 'Menlo', monospace; font-size: 0.78rem;
+  color: var(--accent-2); text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  letter-spacing: 0.05em; display: none;
+}
+.hud-fps.show { display: block; }
+
 #hud-damage-vignette {
   position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(ellipse at center, rgba(120,0,0,0) 42%, rgba(140,0,0,0.55) 78%, rgba(90,0,0,0.85) 100%);

@@ -4,11 +4,33 @@
   "description": "SWAT Simulator - single player tactical career mode game",
   "type": "module",
   "private": true,
+  "main": "desktop/main.cjs",
   "scripts": {
     "start": "node server.js",
+    "desktop": "electron .",
+    "package-win": "electron-builder --win --x64",
+    "package-linux": "electron-builder --linux",
+    "package-mac": "electron-builder --mac",
     "validate-maps": "node scripts/validateMaps.mjs",
     "validate-runner": "node scripts/validateGameRunner.mjs",
     "validate-gameplay": "node scripts/validateGameplay.mjs",
     "test": "npm run validate-maps && npm run validate-runner && npm run validate-gameplay"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.metrocity.swatsimulator",
+    "productName": "SWAT Simulator",
+    "files": [
+      "index.html",
+      "styles.css",
+      "src/**/*",
+      "desktop/**/*"
+    ],
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage", "category": "Game" },
+    "mac": { "target": "dmg" }
   }
 }

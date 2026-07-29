@@ -244,42 +244,90 @@ function weaponPrototype(weaponId) {
   return proceduralWeaponCache.get(weaponId);
 }
 
+// Equipment is authored in the character's own (unscaled) space, where the rig
+// is 2.7 units tall: legs ~0-1.0, torso ~1.0-1.9, head ~1.9-2.7 spanning
+// +/-0.4 on X and Z. Sizing to those real measurements keeps the helmet on the
+// head instead of ballooning into a floating dome, and every value is kept
+// light enough that the kit still reads as geometry in unlit shadow rather
+// than collapsing into one black silhouette.
 function buildRoleEquipment(role) {
+  // Split into head-worn and torso-worn kit. Both halves are authored in the
+  // character's root space and re-based onto the matching bone at equip time,
+  // so the gear rides the skeleton — parented to the root instead, a helmet
+  // stays standing upright while the body plays its death animation.
+  const head = new THREE.Group();
   const root = new THREE.Group();
   const isTeammate = role === 'teammate';
   const isElite = role === 'eliteSuspect';
-  const cloth = material(isTeammate ? 0x172632 : isElite ? 0x1a1b1c : 0x342d27, 0.05, 0.92);
-  const armor = material(isTeammate ? 0x263d4c : isElite ? 0x202225 : 0x40382f, 0.18, 0.68);
-  const trim = material(isTeammate ? 0x0b1116 : isElite ? 0x641f1f : 0x181512, 0.12, 0.76);
-  const lens = material(isTeammate ? 0x1d3542 : 0x321b18, 0.7, 0.16);
 
-  addBox(root, [0.82, 0.72, 0.42], [0, 1.35, 0], armor);
-  addBox(root, [0.62, 0.42, 0.08], [0, 1.38, 0.25], cloth);
-  addBox(root, [0.2, 0.22, 0.12], [-0.25, 1.05, 0.29], trim);
-  addBox(root, [0.2, 0.22, 0.12], [0, 1.05, 0.29], trim);
-  addBox(root, [0.2, 0.22, 0.12], [0.25, 1.05, 0.29], trim);
-  addBox(root, [0.24, 0.22, 0.34], [-0.53, 1.55, 0], armor);
-  addBox(root, [0.24, 0.22, 0.34], [0.53, 1.55, 0], armor);
+  const shell = material(isTeammate ? 0x41505e : isElite ? 0x35373c : 0x4c4238, 0.3, 0.55);
+  shell.emissive = new THREE.Color(isTeammate ? 0x0e161d : isElite ? 0x121316 : 0x151109);
+  shell.emissiveIntensity = 0.45;
+  const webbing = material(isTeammate ? 0x2d3a46 : isElite ? 0x26282c : 0x3c3329, 0.12, 0.82);
+  webbing.emissive = new THREE.Color(0x0a0d10);
+  webbing.emissiveIntensity = 0.35;
+  const accent = material(isTeammate ? 0x93a8ba : isElite ? 0x93332f : 0x6f5f48, 0.34, 0.45);
+  const glass = new THREE.MeshStandardMaterial({
+    color: 0x22394a, metalness: 0.86, roughness: 0.1,
+    emissive: 0x14303f, emissiveIntensity: 0.9,
+  });
 
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), armor);
-  helmet.scale.set(1, 0.72, 1);
-  helmet.position.set(0, 2.2, 0);
+  // Plate carrier front/back with side straps.
+  addBox(root, [0.88, 0.76, 0.18], [0, 1.5, 0.34], shell);
+  addBox(root, [0.88, 0.76, 0.16], [0, 1.5, -0.34], shell);
+  addBox(root, [0.14, 0.62, 0.6], [-0.45, 1.48, 0], webbing);
+  addBox(root, [0.14, 0.62, 0.6], [0.45, 1.48, 0], webbing);
+
+  // Magazine pouches across the chest.
+  for (const px of [-0.26, 0, 0.26]) addBox(root, [0.21, 0.26, 0.13], [px, 1.26, 0.46], webbing);
+  addBox(root, [0.5, 0.16, 0.12], [0, 1.72, 0.45], accent);
+
+  // Shoulder pads and collar.
+  addBox(root, [0.26, 0.18, 0.44], [-0.5, 1.85, 0], shell);
+  addBox(root, [0.26, 0.18, 0.44], [0.5, 1.85, 0], shell);
+  addBox(root, [0.54, 0.15, 0.46], [0, 1.95, 0], webbing);
+
+  // Helmet: a shallow cap sized just proud of the 0.8-wide head.
+  const helmet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.46, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.56),
+    shell,
+  );
+  helmet.scale.set(1.08, 1.0, 1.12);
+  helmet.position.set(0, 2.26, 0);
   helmet.castShadow = true;
-  root.add(helmet);
-  addBox(root, [0.62, 0.14, 0.1], [0, 2.18, 0.43], lens);
-  addBox(root, [0.1, 0.42, 0.1], [-0.55, 1.9, 0.06], trim);
-  addBox(root, [0.08, 0.45, 0.08], [-0.55, 2.18, 0.06], trim, [0, 0, -0.12]);
+  helmet.receiveShadow = true;
+  head.add(helmet);
+  addBox(head, [1.0, 0.07, 1.04], [0, 2.25, 0], webbing);
+
+  // Visor, NVG mount and ear protection.
+  addBox(head, [0.6, 0.15, 0.09], [0, 2.29, 0.4], glass);
+  addBox(head, [0.17, 0.12, 0.14], [0, 2.5, 0.38], accent);
+  addBox(head, [0.1, 0.24, 0.24], [-0.43, 2.24, 0.02], webbing);
+  addBox(head, [0.1, 0.24, 0.24], [0.43, 2.24, 0.02], webbing);
 
   if (isTeammate) {
-    addBox(root, [0.28, 0.5, 0.15], [0.38, 1.42, -0.28], trim);
+    addBox(root, [0.42, 0.46, 0.16], [0, 1.46, -0.5], webbing);
+    addBox(root, [0.06, 0.5, 0.06], [-0.42, 2.2, -0.26], accent, [0.16, 0, 0.1]);
   }
-  return root;
+  return { head, torso: root };
+}
+
+// Re-bases a group authored in `root` space into `bone` space, so it lands in
+// exactly the same place at bind pose but is then carried by the animation.
+function attachToBone(root, bone, group) {
+  if (!bone) { root.add(group); return; }
+  root.updateMatrixWorld(true);
+  const toBone = new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(root.matrixWorld);
+  group.applyMatrix4(toBone);
+  bone.add(group);
 }
 
 export function equipCharacterRole(root, role) {
   if (role !== 'teammate' && role !== 'suspect' && role !== 'eliteSuspect') return;
   if (!roleEquipmentCache.has(role)) roleEquipmentCache.set(role, buildRoleEquipment(role));
-  root.add(roleEquipmentCache.get(role).clone(true));
+  const kit = roleEquipmentCache.get(role);
+  attachToBone(root, root.getObjectByName('head'), kit.head.clone(true));
+  attachToBone(root, root.getObjectByName('torso'), kit.torso.clone(true));
 }
 
 // ---------------------------------------------------------------- characters
